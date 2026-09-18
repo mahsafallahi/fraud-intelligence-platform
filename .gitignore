@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Data (raw/large files shouldn't be committed)
+data/bronze/*.parquet
+data/silver/*.parquet
+data/gold/*.parquet
+data/raw/
+
+# Environment
+.env
+
+# Airflow
+airflow.db
+airflow-webserver.pid
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
