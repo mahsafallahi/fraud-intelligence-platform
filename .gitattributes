@@ -1,0 +1,15 @@
+# Normalise line endings to LF for every text file, on every OS.
+# Files are mounted into Linux containers (Airflow, API), where CRLF breaks
+# shell scripts and shebangs.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Never touch binary files
+*.parquet binary
+*.png     binary
+*.jpg     binary
+*.pdf     binary
