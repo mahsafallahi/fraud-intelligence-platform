@@ -1,4 +1,4 @@
-# Influencer Marketing Intelligence Platform
+# Fraud Intelligence Platform
 
 End-to-end Data Engineering + Data Science + GenAI + MLOps project.
 
