@@ -1,0 +1,4 @@
+# Development tools (not needed to run the pipeline or API)
+-r requirements.txt
+ipykernel==7.3.0
+nbconvert==7.17.1
