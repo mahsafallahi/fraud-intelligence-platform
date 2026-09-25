@@ -1,0 +1,115 @@
+# Local Airflow 3 stack: LocalExecutor + Postgres metadata DB.
+# Memory limits add up to 5.5 GB while running (airflow-init exits before the rest start).
+#
+#   docker compose up -d          start (UI: http://localhost:8080)
+#   docker compose down           stop (metadata DB volume is kept)
+#
+# Values like ${CENSUS_API_KEY} are read from .env by Docker Compose.
+
+name: fraud-platform
+
+x-airflow-common: &airflow-common
+  image: fraud-airflow:3.3.2
+  build:
+    context: .
+    dockerfile: docker/airflow/Dockerfile
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__PARALLELISM: "4"                 # max tasks running at once
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"  # nothing runs until you unpause it
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/${POSTGRES_DB:-airflow}
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?set AIRFLOW_FERNET_KEY in .env}
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?set AIRFLOW_JWT_SECRET in .env}
+    # Airflow 3: tasks report back to the API server through the Execution API.
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    # Local development only: no login, every user is admin (UI is bound to localhost).
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+    AIRFLOW__API__WORKERS: "1"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Our code and data, mounted from the project folder (see volumes).
+    PYTHONPATH: /opt/airflow/project
+    DATA_DIR: /opt/airflow/project/data
+  volumes: &airflow-volumes
+    - ./src/airflow/dags:/opt/airflow/dags
+    - ./src:/opt/airflow/project/src
+    - ./data:/opt/airflow/project/data
+    - airflow-logs:/opt/airflow/logs
+  depends_on: &airflow-depends-on
+    postgres:
+      condition: service_healthy
+    airflow-init:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
+      POSTGRES_DB: ${POSTGRES_DB:-airflow}
+    volumes:
+      - postgres-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-airflow}"]
+      interval: 10s
+      retries: 5
+    mem_limit: 512m
+    restart: unless-stopped
+
+  # Runs once: creates/upgrades the metadata DB schema, then exits.
+  airflow-init:
+    <<: *airflow-common
+    command: ["db", "migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1g
+    restart: "no"
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    mem_limit: 1536m
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    environment:
+      <<: *airflow-env
+      # Tasks run inside the scheduler (LocalExecutor), so only it gets the key.
+      # Exposed as an Airflow Variable; names containing "api_key" are masked in logs.
+      AIRFLOW_VAR_CENSUS_API_KEY: ${CENSUS_API_KEY:?set CENSUS_API_KEY in .env}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    mem_limit: 2560m
+    restart: unless-stopped
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    mem_limit: 1g
+    restart: unless-stopped
+
+volumes:
+  postgres-db:
+  airflow-logs:
