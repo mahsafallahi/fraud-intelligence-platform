@@ -2,12 +2,9 @@ import pandas as pd
 import pytest
 import requests
 
-from src.ingestion.bronze_holidays import (
-    SOURCE_NAME,
-    ingest_year,
-    make_session,
-    partition_path,
-)
+from src.ingestion.bronze_holidays import SOURCE_NAME, ingest_year, partition_path
+from src.utils.http import make_session
+from tests.http_fakes import FakeResponse, FakeSession
 
 # Shaped like the real API response, including a null field and a list field.
 BODY = (
@@ -18,26 +15,6 @@ BODY = (
     '"countryCode":"US","fixed":false,"global":false,"counties":["US-CA","US-NY"],'
     '"launchYear":null,"types":["Observance"]}]'
 )
-
-
-class FakeResponse:
-    def __init__(self, status_code: int, text: str):
-        self.status_code = status_code
-        self.text = text
-
-    def raise_for_status(self):
-        if self.status_code >= 400:
-            raise requests.HTTPError(f"{self.status_code} error")
-
-
-class FakeSession:
-    def __init__(self, response: FakeResponse):
-        self.response = response
-        self.urls = []
-
-    def get(self, url, timeout):
-        self.urls.append(url)
-        return self.response
 
 
 def test_stores_raw_body_exactly(tmp_path):
