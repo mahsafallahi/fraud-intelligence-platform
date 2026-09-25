@@ -18,13 +18,13 @@ Usage:
 
 import argparse
 import logging
-import os
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
 
+from src.utils.parquet import write_parquet_atomic
 from src.utils.paths import BRONZE_DIR, DATA_DIR, LANDING_DIR
 
 log = logging.getLogger(__name__)
@@ -62,13 +62,8 @@ def ingest_day(
     df["_source_file"] = meta(_relative_to_data_dir(src), "str")
     df["_batch_date"] = meta(batch_date, pd.ArrowDtype(pa.date32()))
 
-    # Write to a temp file, then rename over the target: a crash mid-write
-    # never leaves a half-written partition behind.
     dest = partition_path(batch_date, bronze_dir)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(".parquet.tmp")
-    df.to_parquet(tmp, index=False)
-    os.replace(tmp, dest)
+    write_parquet_atomic(df, dest)
 
     log.info("%s: %d rows -> %s", batch_date, len(df), dest)
     return len(df)
