@@ -15,10 +15,17 @@ class FakeResponse:
 
 
 class FakeSession:
-    def __init__(self, response: FakeResponse):
-        self.response = response
-        self.urls = []
+    """Returns `response` for every GET, or raises `error` if given."""
 
-    def get(self, url, timeout, **kwargs):
+    def __init__(self, response: FakeResponse | None = None, error: Exception | None = None):
+        self.response = response
+        self.error = error
+        self.urls = []
+        self.params = []
+
+    def get(self, url, timeout, params=None, **kwargs):
         self.urls.append(url)
+        self.params.append(params)
+        if self.error:
+            raise self.error
         return self.response
