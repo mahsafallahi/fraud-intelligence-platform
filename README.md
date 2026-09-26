@@ -64,4 +64,10 @@ Notes:
 - The transactions DAG uses a data-interval schedule: the run for day D starts after D ends, at midnight on D+1.
   A **manual** trigger at time T therefore processes the last complete day before T
   (`airflow dags test bronze_transactions_daily 2019-01-05` ingests 2019-01-04).
+- `airflow dags test` **stores a real run** under the given logical date. Airflow allows only one run per
+  logical date, so a test run inside the scheduled range (2019-01-01 to 2020-12-31) later blocks the
+  catch-up at that date (the scheduler logs `run already exists; skipping dagrun creation` in a loop).
+  Test with a date outside the range, or delete the test run afterwards
+  (UI: *Browse → Dag Runs*, or `DELETE /api/v2/dags/{dag_id}/dagRuns/{run_id}`).
+- Backfill runs (`airflow backfill create`) only start while the DAG is **unpaused**.
 - Local development only: the UI has no login (every user is admin) and is bound to `127.0.0.1`.
