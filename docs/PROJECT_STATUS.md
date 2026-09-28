@@ -1,7 +1,7 @@
 # Fraud Intelligence Platform — Project Status
 
-**Last updated:** 2026-09-27
-**Current step:** Phase 1 → Silver layer (transactions first), written by the project author.
+**Last updated:** 2026-09-28
+**Current step:** Phase 1 → Silver layer, written by the project author. The transactions transform and its tests are done; writing Silver partitions and the other sources are next.
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
 
@@ -17,7 +17,7 @@ An end-to-end financial fraud detection platform that demonstrates both **Data E
 
 | # | Phase | Main role | Status |
 |---|---|---|---|
-| 1 | Ingestion, Bronze and Silver layers, Airflow | Data Engineering | 🔄 In progress: Bronze ✅, Airflow ✅, Silver 🔄 |
+| 1 | Ingestion, Bronze and Silver layers, Airflow | Data Engineering | 🔄 In progress: Bronze ✅, Airflow ✅, Silver 🔄 (transactions transform ✅) |
 | 2 | Star-schema warehouse (dbt) and data quality (Great Expectations) | Data Engineering | ⬜ Not started |
 | 3 | Exploratory analysis and hypothesis testing | Data Science | ⬜ Not started |
 | 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | ⬜ Not started |
@@ -78,7 +78,7 @@ Stored only in `.env`, which is git-ignored. `.env.example` lists the names with
 
 - `CENSUS_API_KEY` — Census API. Docker Compose passes it only to the scheduler, as the Airflow Variable `census_api_key`.
 - `AIRFLOW_FERNET_KEY`, `AIRFLOW_JWT_SECRET` — generated for Airflow (Fernet encrypts connection passwords in the metadata DB; the JWT secret lets the Airflow 3 components trust each other).
-- `PII_HASH_KEY` — secret key for hashing personal data in Silver (being added).
+- `PII_HASH_KEY` — secret key for hashing personal data in Silver: 64 hex characters, loaded as 32 bytes with `bytes.fromhex` by `load_pii_key()`; error messages never include the value.
 
 Keys are never printed in output or logs. The Census API only accepts the key as a URL parameter, so the code removes it from the stored URL, re-raises request errors with the key replaced by `***`, and attaches a redacting filter to the urllib3 loggers; in Airflow the key is also registered with `mask_secret`.
 
@@ -101,7 +101,14 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 | Empty file for a day with no data | "Missing file" means an upstream outage and fails; "empty file" means the source confirmed no data. |
 | Census Gazetteer now, Census API with a key afterwards | Progress was not blocked by the key; demographics add value for causal analysis. |
 | Separate `requirements.txt` and `requirements-dev.txt` | Keeps the runtime Docker image smaller. |
-| Card number hashed with a secret key; names and street dropped | The card number is the customer identifier needed for behavioural features; names have no analytical value (data minimisation). A plain hash of a card number can be reversed by brute force, so a keyed hash (HMAC) is used. |
+| Card number hashed with a secret key; names and street dropped | The card number is the customer identifier needed for behavioural features; names have no analytical value (data minimisation). A plain hash of a card number can be reversed by brute force, so a keyed hash (HMAC) is used. `first`, `last`, `street` are dropped; `cc_num` becomes `card_hash` (HMAC-SHA256 with `PII_HASH_KEY`, 64 hex characters). |
+| `dob` replaced by `birth_year` (int16); the full date is dropped | Full date of birth + ZIP + gender is a quasi-identifier that can single out a person; age is all the models need. |
+| Customer `lat`/`long` kept on purpose | Needed for the customer-to-merchant distance. They locate the customer almost like a home address, so raw coordinates stay in Silver only; Gold, the API and the dashboard expose the distance, never the coordinates. |
+| Silver transform is a pure function: `transform_transactions(bronze, key)` → DataFrame, no file I/O | Easy to test without files; the caller (notebook or Airflow task) reads Bronze and writes Silver. |
+| Strict validation: any unacceptable value raises `SilverValidationError`; fixed 22-column schema | Bad data stops the batch instead of silently reaching Gold; the output schema is identical for every batch. |
+| `_batch_date` stays `date32[pyarrow]` in Silver, as in Bronze | It is a day, not a timestamp. |
+| No check that the date of `trans_ts` equals `_batch_date` | Late-arriving rows are normal in real feeds and must not fail a batch (this dataset has none: every Bronze row matched its partition date in the backfill check). |
+| `fraud_` prefix removed from merchant names | Generator artefact with no meaning; a name that is empty after removal fails validation. |
 | No `.wslconfig` change | Per-container memory limits are enough; avoids a system-wide change. |
 
 ---
@@ -125,15 +132,17 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 
 ## 9. Silver layer to-do (transactions first)
 
-- [ ] Drop `Unnamed: 0` and `unix_time`
-- [ ] Drop personal data: `first`, `last`, `street`
-- [ ] Hash `cc_num` with HMAC using `PII_HASH_KEY`
-- [ ] Cast types: timestamp, `dob` as date, amounts and coordinates as float, `city_pop` as integer, `is_fraud` as 0/1
-- [ ] Pad `zip` to 5 digits, kept as a string
+- [x] Drop `Unnamed: 0` and `unix_time`
+- [x] Drop personal data: `first`, `last`, `street`
+- [x] Hash `cc_num` with HMAC using `PII_HASH_KEY`
+- [x] Cast types: timestamp, `dob` → `birth_year` (int16), amounts and coordinates as float, `city_pop` as integer, `is_fraud` as 0/1
+- [x] Pad `zip` to 5 digits, kept as a string
+- [ ] Write Silver partitions to `data/silver/transactions/` (the transform has no file I/O) and run it from Airflow
 - [ ] Holidays and Census ACS: parse the raw JSON `response_body` into one row per holiday / ZIP area
 - [ ] Census: turn `-666666666` into null
 - [ ] Gazetteer: trim whitespace in column names and values
-- [ ] Tests for the Silver transformations
+- [x] Tests for the Silver transactions transform (31 tests)
+- [ ] Tests for the other Silver transformations
 
 ---
 
@@ -141,6 +150,7 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 
 - **Schema consistency:** the empty leap-day partition was written with `null` column types, which would break readers such as dbt. Fixed by setting metadata types explicitly, with a test comparing schemas.
 - **Test run blocked the backfill:** an `airflow dags test` run inside the scheduled range occupied the slot for 2019-01-05, so catch-up looped. Fixed by deleting that run record. Lesson: test with dates outside the real range, or delete test runs afterwards.
+- **Empty batches in Silver:** the same risk as the Bronze leap day applies to Silver: a 0-row batch must still have the full typed schema. `transform_transactions` returns `empty_silver_frame()` for an empty batch; verified on 2020-02-29 (0 rows, dtypes identical to a normal day).
 - **Paused DAGs do not run backfills:** queued runs start only after unpausing.
 - **Data intervals:** a run at time T processes the last complete day before T.
 - **Python 3.14 and old pins:** old pandas pins had no wheels for Python 3.14, so pip tried to compile from source. Fixed by pinning versions that have wheels.
@@ -156,7 +166,7 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 - Windows 11, 32 GB RAM, PyCharm, Docker Desktop.
 - Python 3.14.6 in `.venv`; pandas 3.0.5, pyarrow 25.0.1, requests 2.34.2, python-dotenv 1.2.3.
 - The Airflow Docker image uses Python 3.12 with the same package versions. 3.12 was chosen as a mature, widely supported version for Airflow; images for 3.13 and 3.14 also exist.
-- Dev tools: ipykernel, nbconvert, pytest. The test suite (43 tests) passed at the last run.
+- Dev tools: ipykernel, nbconvert, pytest. The test suite (74 tests) passed at the last run.
 
 ---
 
@@ -189,6 +199,7 @@ Never add `-v` to that command: it deletes the Airflow volumes.
 | 2026-09-25 | Bronze ingestion for transactions (with feed simulator), holidays, MCC, Census ZIP and Census ACS; tests added. |
 | 2026-09-26 | Airflow in Docker; full 731-day backfill verified against raw; Silver design notebook started. |
 | 2026-09-27 | Status file created; Silver layer started. |
+| 2026-09-28 | Silver transactions transform (`src/silver/transactions.py`, commit `74109ed`): pure function, strict validation, fixed 22-column schema, empty batches keep the schema. 31 tests (`tests/test_silver_transactions.py`, commit `f2ac29c`); full suite 74 passed. Verified in `01_silver_design.ipynb`: 2019-01-01 → 2,414 rows × 22 columns, 779 cards before and after hashing, hash length 64, ZIP length 5; 2020-02-29 → 0 rows with identical dtypes. |
 
 ---
 
