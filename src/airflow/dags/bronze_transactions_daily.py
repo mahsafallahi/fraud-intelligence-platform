@@ -7,6 +7,8 @@ day of data_interval_start.
 
 catchup=True makes Airflow create a run for every past interval between
 start_date and end_date: this is the backfill of the whole dataset.
+
+Each run then builds the Silver partition for the same day (silver_transactions).
 """
 
 from datetime import timedelta
@@ -39,7 +41,28 @@ def bronze_transactions_daily():
 
         return ingest_day(data_interval_start.date())
 
-    ingest_transactions()
+    # 1 retry for transient problems (I/O, container restart); data errors
+    # (SilverValidationError) become AirflowFailException and fail at once.
+    @task(retries=1, retry_delay=timedelta(minutes=1))
+    def silver_transactions(data_interval_start=None) -> int:
+        from airflow.sdk import Variable
+        from airflow.sdk.exceptions import AirflowFailException
+        from airflow.sdk.log import mask_secret
+
+        from src.pipeline.silver_jobs import fail_fast_on_validation_error, run_transactions_day
+        from src.silver.transactions import load_pii_key
+
+        # Loaded once per run. The Variable name contains "secret", so Airflow
+        # masks it by name; mask_secret registers it explicitly as well.
+        secret = Variable.get("pii_hash_secret")
+        mask_secret(secret)
+        key = load_pii_key({"PII_HASH_KEY": secret})
+
+        run = fail_fast_on_validation_error(AirflowFailException)(run_transactions_day)
+        return run(data_interval_start.date(), key)
+
+    # Silver for a day runs only after Bronze for the same day succeeded.
+    ingest_transactions() >> silver_transactions()
 
 
 bronze_transactions_daily()

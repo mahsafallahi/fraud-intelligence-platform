@@ -89,6 +89,9 @@ services:
       # Tasks run inside the scheduler (LocalExecutor), so only it gets the key.
       # Exposed as an Airflow Variable; names containing "api_key" are masked in logs.
       AIRFLOW_VAR_CENSUS_API_KEY: ${CENSUS_API_KEY:?set CENSUS_API_KEY in .env}
+      # Silver card hashing key. The Variable name contains "secret", so Airflow
+      # masks its value in task logs by name (pii_hash_key would not match).
+      AIRFLOW_VAR_PII_HASH_SECRET: ${PII_HASH_KEY:?set PII_HASH_KEY in .env}
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
       interval: 30s

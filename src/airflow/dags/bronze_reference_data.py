@@ -1,8 +1,11 @@
-"""Bronze ingestion of the reference sources: holidays, MCC codes, Census ZIP data.
+"""Bronze ingestion of the reference sources: holidays, MCC codes, Census ZIP data,
+followed by their Silver partitions.
 
 Manual trigger only (schedule=None): each source is pinned to a version
 (year, commit, vintage), so it is re-run deliberately when a version changes.
-The four tasks are independent and run in parallel.
+The four Bronze tasks are independent and run in parallel; each Silver task runs
+after its own Bronze task. MCC has no Silver step (its mapping comes later as a
+dbt seed).
 """
 
 from datetime import timedelta
@@ -11,6 +14,7 @@ import pendulum
 from airflow.sdk import dag, task
 
 # Years/vintage covered by the transactions data (2019-01-01 .. 2020-12-31).
+HOLIDAY_COUNTRY = "US"
 HOLIDAY_YEARS = [2019, 2020]
 CENSUS_VINTAGE = 2019
 
@@ -31,7 +35,7 @@ def bronze_reference_data():
     def holidays() -> int:
         from src.ingestion.bronze_holidays import ingest_year
 
-        return sum(ingest_year(year) for year in HOLIDAY_YEARS)
+        return sum(ingest_year(year, HOLIDAY_COUNTRY) for year in HOLIDAY_YEARS)
 
     @task
     def mcc() -> int:
@@ -56,10 +60,37 @@ def bronze_reference_data():
         mask_secret(api_key)  # explicit, in addition to Airflow's name-based masking
         return ingest(CENSUS_VINTAGE, api_key=api_key)
 
-    holidays()
+    # --- Silver: 1 retry for transient problems; data errors fail at once ---
+
+    @task(retries=1, retry_delay=timedelta(minutes=1))
+    def silver_holidays() -> int:
+        from airflow.sdk.exceptions import AirflowFailException
+
+        from src.pipeline.silver_jobs import fail_fast_on_validation_error, run_holidays
+
+        run = fail_fast_on_validation_error(AirflowFailException)(run_holidays)
+        return sum(run(HOLIDAY_COUNTRY, year) for year in HOLIDAY_YEARS)
+
+    @task(retries=1, retry_delay=timedelta(minutes=1))
+    def silver_census_zcta() -> int:
+        from airflow.sdk.exceptions import AirflowFailException
+
+        from src.pipeline.silver_jobs import fail_fast_on_validation_error, run_census_zcta
+
+        return fail_fast_on_validation_error(AirflowFailException)(run_census_zcta)(CENSUS_VINTAGE)
+
+    @task(retries=1, retry_delay=timedelta(minutes=1))
+    def silver_census_acs() -> int:
+        from airflow.sdk.exceptions import AirflowFailException
+
+        from src.pipeline.silver_jobs import fail_fast_on_validation_error, run_census_acs
+
+        return fail_fast_on_validation_error(AirflowFailException)(run_census_acs)(CENSUS_VINTAGE)
+
+    holidays() >> silver_holidays()
     mcc()
-    census_zcta()
-    census_acs()
+    census_zcta() >> silver_census_zcta()
+    census_acs() >> silver_census_acs()
 
 
 bronze_reference_data()
