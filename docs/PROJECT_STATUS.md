@@ -1,7 +1,7 @@
 # Fraud Intelligence Platform — Project Status
 
 **Last updated:** 2026-10-09
-**Current step:** Phase 2 → steps 1 and 2 of 5 done: star schema designed (`docs/star_schema_design.md`) and the category → MCC mapping designed. Implementation (dbt) not started.
+**Current step:** Phase 2 → steps 1 and 2 of 5 done (star schema and MCC mapping designed); step 3 (Gold tooling): dbt scaffolding done, staging built and tested. Next: the author writes the Silver MCC transform and the intermediate/marts SQL.
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
 
@@ -18,7 +18,7 @@ An end-to-end financial fraud detection platform that demonstrates both **Data E
 | # | Phase | Main role | Status |
 |---|---|---|---|
 | 1 | Ingestion, Bronze and Silver layers, Airflow | Data Engineering | ✅ Complete: Bronze ✅, Silver ✅, Airflow ✅ (transactions, holidays, Census ACS, Census Gazetteer) |
-| 2 | Star-schema warehouse (dbt) and data quality (Great Expectations) | Data Engineering | 🔄 In progress: steps 1–2 of 5 done (star schema design ✅, category → MCC mapping ✅); dbt not started |
+| 2 | Star-schema warehouse (dbt) and data quality (Great Expectations) | Data Engineering | 🔄 In progress: steps 1–2 of 5 done (star schema design ✅, category → MCC mapping ✅); step 3 in progress (dbt scaffolding ✅, marts SQL ⬜) |
 | 3 | Exploratory analysis and hypothesis testing | Data Science | ⬜ Not started |
 | 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | ⬜ Not started |
 | 5 | Causal inference on fraud risk drivers | Data Science | ⬜ Not started |
@@ -160,7 +160,8 @@ Phase 2 (Gold), steps 1–2 of 5 done; dbt not started:
 
 - [x] Profile the full Silver layer (`notebooks/02_star_schema_design.ipynb`) and write the star schema design (`docs/star_schema_design.md`)
 - [x] Design the category → MCC mapping (14 rows, 11 codes, `channel` column)
-- [ ] Set up the Gold tooling (dbt) and create the seed file from the mapping table
+- [x] Set up the Gold tooling (dbt-core 1.12.5 + dbt-duckdb 1.11.0 + duckdb 1.5.6 in `.venv-dbt`, project in `src/dbt`, DuckDB file `data/gold/fraud.duckdb`) and create the seed file from the mapping table
+- [ ] Silver MCC transform (author), then `stg_mcc_codes` and the test that every seed `mcc` exists in it; narrow the `silver.mcc` source path
 - [ ] Build `fact_transactions` and the four dimensions
 - [ ] Generate `dim_date` as a calendar (731 days), not from distinct transaction dates (that gives 730: no transactions on 2020-02-29)
 - [ ] Pass the design's checks: fact rows = Silver rows; `trans_num` unique; every foreign key finds exactly one dimension row; dim_card 999, dim_merchant 700, dim_location 985, dim_date 731; fraud total 9,651
@@ -242,6 +243,7 @@ Never add `-v` to that command: it deletes the Airflow volumes.
 | 2026-10-02 | Silver transforms for Census ACS, Census Gazetteer and holidays with tests (author, commit `7b842d2`). Silver writer `src/pipeline/silver_jobs.py` and Airflow Silver tasks with 13 tests (commit `bdd3216`); full suite 149 passed. Masking of `pii_hash_secret` proved with a dummy Variable. Historical Silver built in Airflow with the `only_new` clear (731 transaction runs + reference run), Bronze byte-identical. Verified: 731 partitions, 1,852,394 rows, 9,651 fraud, 999 cards; ACS 33,120 rows (2,299 / 569 nulls); Gazetteer 33,144; holidays 160; secrets in 0 logs and 0 Silver files. **Phase 1 complete.** |
 | 2026-10-05 | Phase 2 step 1 (author, commit `5afc439`): profiled the full Silver layer in `02_star_schema_design.ipynb`; star schema designed in `docs/star_schema_design.md`: fact grain one transaction, star not snowflake, dim_card 999, dim_merchant on name + category 700 (693 names), dim_location from transaction ZIPs 985, dim_date 731, missing income null with `has_income`, holidays collapsed per date and state. |
 | 2026-10-09 | Phase 2 step 2 (author, commit `13093ed`): category → MCC mapping designed as a 14-row seed (11 distinct codes) with a separate `channel` column. Status file updated. |
+| 2026-10-09 | Phase 2 step 3, dbt scaffolding: separate `.venv-dbt` (Python 3.14.6; dbt-core 1.12.5, dbt-duckdb 1.11.0, duckdb 1.5.6), `dbt debug` passed without setting `DATA_DIR`. Project in `src/dbt` (run from that folder): Silver sources read with `hive_partitioning = false` (no duplicate date column), 4 staging views (select only), 14-row seed verbatim from the design, all design checks as tests (`_marts.yml`, 1 custom generic + 3 singular tests; they activate once the author's models exist; `dim_date` column named `calendar_date`). `dbt seed` + `dbt build --select staging`: 14/14 passed; rows 1,852,394 / 33,120 / 33,144 / 160, seed 14. Staging views store relative paths, so outside dbt only the mart tables are queried. |
 
 ---
 

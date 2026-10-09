@@ -1,0 +1,31 @@
+# Gold layer: star schema built from Silver Parquet with dbt + DuckDB.
+# Design: docs/star_schema_design.md. Run dbt from this folder (src/dbt).
+name: fraud_gold
+version: "1.0.0"
+profile: fraud_gold
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+clean-targets: ["target", "dbt_packages"]
+
+flags:
+  send_anonymous_usage_stats: false  # no usage data sent to dbt Labs
+
+models:
+  fraud_gold:
+    staging:
+      +materialized: view   # 1:1 with the Silver sources, select/rename only
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table  # the Gold star schema
+
+seeds:
+  fraud_gold:
+    category_mcc_map:
+      +column_types:          # all text: an MCC must never lose a leading zero
+        category: varchar
+        mcc: varchar
+        channel: varchar

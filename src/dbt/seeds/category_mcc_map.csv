@@ -1,0 +1,15 @@
+category,mcc,channel
+entertainment,7999,unknown
+food_dining,5812,unknown
+gas_transport,5541,unknown
+grocery_pos,5411,in_person
+grocery_net,5411,online
+health_fitness,7997,unknown
+home,5712,unknown
+kids_pets,5995,unknown
+misc_pos,5999,in_person
+misc_net,5999,online
+personal_care,7230,unknown
+shopping_pos,5311,in_person
+shopping_net,5311,online
+travel,4722,unknown

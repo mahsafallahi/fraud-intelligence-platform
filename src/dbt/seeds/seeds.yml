@@ -1,0 +1,23 @@
+version: 2
+
+seeds:
+  - name: category_mcc_map
+    description: >
+      Simulator category -> representative MCC, plus the channel an MCC cannot
+      express. Copied verbatim from docs/star_schema_design.md (14 rows, 11
+      distinct codes, so the key is category). The test that every mcc exists in
+      the MCC reference is added together with stg_mcc_codes.
+    columns:
+      - name: category
+        data_tests:
+          - unique
+          - not_null
+      - name: mcc
+        data_tests:
+          - not_null
+      - name: channel
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["in_person", "online", "unknown"]

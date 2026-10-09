@@ -1,0 +1,10 @@
+# Local DuckDB file, no credentials. DATA_DIR defaults to the project's data
+# folder relative to src/dbt (run dbt from src/dbt); in Docker it is set by the
+# container, as for the Python pipeline.
+fraud_gold:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DATA_DIR', '../../data') }}/gold/fraud.duckdb"
+      threads: 4

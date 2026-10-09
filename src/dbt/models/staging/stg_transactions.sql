@@ -1,0 +1,25 @@
+-- One row per card transaction, exactly as in Silver (select only, no logic).
+select
+    trans_num,
+    trans_ts,
+    card_hash,
+    merchant,
+    category,
+    amt,
+    gender,
+    city,
+    state,
+    zip,
+    lat,
+    "long",
+    city_pop,
+    job,
+    birth_year,
+    merch_lat,
+    merch_long,
+    is_fraud,
+    _ingested_at,
+    _source,
+    _source_file,
+    _batch_date
+from {{ source('silver', 'transactions') }}

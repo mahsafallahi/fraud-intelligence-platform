@@ -1,0 +1,52 @@
+version: 2
+
+# Primary-key tests on the staging views, plus: every transaction category has a
+# row in the MCC seed. stg_mcc_codes is added once Silver MCC exists.
+models:
+  - name: stg_transactions
+    description: Silver transactions, select only.
+    columns:
+      - name: trans_num
+        data_tests:
+          - unique
+          - not_null
+      - name: category
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('category_mcc_map')
+                field: category
+
+  - name: stg_census_acs
+    description: Silver Census ACS, select only.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "zip || '|' || _vintage"
+    columns:
+      - name: zip
+        data_tests:
+          - not_null
+
+  - name: stg_census_zcta
+    description: Silver Census Gazetteer, select only.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "zip || '|' || _vintage"
+    columns:
+      - name: zip
+        data_tests:
+          - not_null
+
+  - name: stg_holidays
+    description: Silver holidays, select only. Key is (holiday_date, name, state_code).
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "holiday_date || '|' || name || '|' || coalesce(state_code, 'nationwide')"
+    columns:
+      - name: holiday_date
+        data_tests:
+          - not_null

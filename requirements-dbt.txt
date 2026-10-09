@@ -1,0 +1,5 @@
+# Gold layer tooling, installed in its own virtualenv (.venv-dbt), not in .venv.
+# The duckdb version must match wherever the DuckDB file is opened (file format).
+dbt-core==1.12.5
+dbt-duckdb==1.11.0
+duckdb==1.5.6

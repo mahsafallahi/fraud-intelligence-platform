@@ -1,0 +1,103 @@
+version: 2
+
+# Tests for the Gold star schema (docs/star_schema_design.md, "Checks the
+# implementation must pass"). The models themselves are written by the author;
+# until a model exists, dbt skips its tests.
+#
+# "Every foreign key finds exactly one dimension row" =
+#   not_null on the fact key + relationships to the dimension (at least one)
+#   + unique on the dimension key (at most one).
+# Fact rows = Silver rows, the fraud total and the complete calendar are
+# singular tests in tests/.
+# Surrogate keys are md5 of the natural key.
+
+models:
+  - name: fact_transactions
+    description: One row per card transaction.
+    columns:
+      - name: trans_num               # degenerate dimension
+        data_tests:
+          - unique
+          - not_null
+      - name: is_fraud
+        data_tests:
+          - not_null
+      - name: card_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_card')
+                field: card_key
+      - name: merchant_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_merchant')
+                field: merchant_key
+      - name: location_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_location')
+                field: location_key
+      - name: date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+
+  - name: dim_card
+    description: One row per card (Type 1).
+    data_tests:
+      - row_count_equals:
+          arguments:
+            expected: 999
+    columns:
+      - name: card_key
+        data_tests: [unique, not_null]
+      - name: card_hash
+        data_tests: [unique, not_null]
+
+  - name: dim_merchant
+    description: One row per merchant name + category.
+    data_tests:
+      - row_count_equals:
+          arguments:
+            expected: 700
+      - unique:
+          arguments:
+            column_name: "merchant || '|' || category"
+    columns:
+      - name: merchant_key
+        data_tests: [unique, not_null]
+
+  - name: dim_location
+    description: One row per ZIP code seen in transactions.
+    data_tests:
+      - row_count_equals:
+          arguments:
+            expected: 985
+    columns:
+      - name: location_key
+        data_tests: [unique, not_null]
+      - name: zip
+        data_tests: [unique, not_null]
+
+  - name: dim_date
+    description: Generated calendar, 2019-01-01 to 2020-12-31.
+    data_tests:
+      - row_count_equals:
+          arguments:
+            expected: 731
+    columns:
+      - name: date_key
+        data_tests: [unique, not_null]
+      - name: calendar_date           # assumed name of the date column
+        data_tests:
+          - unique
+          - not_null

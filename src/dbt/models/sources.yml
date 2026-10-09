@@ -1,0 +1,36 @@
+version: 2
+
+# Gold reads only Silver. Each table is read straight from its Parquet files.
+# hive_partitioning = false: DuckDB would otherwise add the folder key
+# (e.g. batch_date) as a second column next to the files' own _batch_date.
+sources:
+  - name: silver
+    description: Silver layer Parquet files written by src/pipeline/silver_jobs.py.
+    tables:
+      - name: transactions
+        description: One row per card transaction; one file per batch_date folder.
+        config:
+          external_location: "read_parquet('{{ env_var('DATA_DIR', '../../data') }}/silver/transactions/*/part-0.parquet', hive_partitioning = false)"
+
+      - name: census_acs
+        description: Census ACS 5-year demographics, one row per ZIP area (vintage folders).
+        config:
+          external_location: "read_parquet('{{ env_var('DATA_DIR', '../../data') }}/silver/census_acs/*/part-0.parquet', hive_partitioning = false)"
+
+      - name: census_zcta
+        description: Census Gazetteer geography, one row per ZIP area (vintage folders).
+        config:
+          external_location: "read_parquet('{{ env_var('DATA_DIR', '../../data') }}/silver/census_zcta/*/part-0.parquet', hive_partitioning = false)"
+
+      - name: holidays
+        description: Public holidays, one row per holiday and state (country/year folders).
+        config:
+          external_location: "read_parquet('{{ env_var('DATA_DIR', '../../data') }}/silver/holidays/*/*/part-0.parquet', hive_partitioning = false)"
+
+      - name: mcc
+        description: >
+          Merchant category codes. Silver MCC is not built yet (planned in
+          src/silver/); stg_mcc_codes is added once it exists. The folder layout
+          is not fixed yet, so every Parquet file below silver/mcc/ is read.
+        config:
+          external_location: "read_parquet('{{ env_var('DATA_DIR', '../../data') }}/silver/mcc/**/*.parquet', hive_partitioning = false)"
