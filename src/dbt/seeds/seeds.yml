@@ -5,8 +5,8 @@ seeds:
     description: >
       Simulator category -> representative MCC, plus the channel an MCC cannot
       express. Copied verbatim from docs/star_schema_design.md (14 rows, 11
-      distinct codes, so the key is category). The test that every mcc exists in
-      the MCC reference is added together with stg_mcc_codes.
+      distinct codes, so the key is category). Every mcc must exist in the MCC
+      reference (stg_mcc_codes).
     columns:
       - name: category
         data_tests:
@@ -15,6 +15,10 @@ seeds:
       - name: mcc
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_mcc_codes')
+                field: mcc
       - name: channel
         data_tests:
           - not_null

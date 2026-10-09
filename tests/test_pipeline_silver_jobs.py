@@ -6,25 +6,34 @@ as Bronze Parquet files in a temp folder, then run through the writer.
 
 import datetime
 import logging
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from src.ingestion.bronze_mcc import PINNED_COMMIT
+from src.ingestion.bronze_mcc import partition_path as bronze_mcc_partition_path
 from src.pipeline.silver_jobs import (
     PART_FILE,
     census_acs_partition,
     census_zcta_partition,
     fail_fast_on_validation_error,
     holidays_partition,
+    mcc_partition,
+    pinned_mcc_version,
     run_census_acs,
     run_census_zcta,
     run_holidays,
+    run_mcc,
     run_transactions_day,
     transactions_partition,
+    version_from_folder,
 )
 from src.silver.census_acs import transform_census_acs
 from src.silver.census_zcta import transform_census_zcta
 from src.silver.holidays import transform_holidays
+from src.silver.mcc import SILVER_SCHEMA as MCC_SILVER_SCHEMA
+from src.silver.mcc import transform_mcc
 from src.silver.transactions import (
     SILVER_SCHEMA,
     SilverValidationError,
@@ -33,6 +42,7 @@ from src.silver.transactions import (
 from tests import test_silver_census_acs as acs
 from tests import test_silver_census_zcta as zcta
 from tests import test_silver_holidays as hol
+from tests import test_silver_mcc as mccs
 from tests.test_silver_transactions import KEY, make_bronze, make_row
 
 DAY = datetime.date(2019, 1, 1)
@@ -175,6 +185,56 @@ def test_holidays_partition_keeps_date32_and_bool(dirs):
     assert written["holiday_date"].dtype == "date32[pyarrow]"
     assert written["is_global"].dtype == "bool"
     pd.testing.assert_frame_equal(written, transform_holidays(bronze))
+
+
+def test_mcc_written_to_its_version_partition_with_exact_dtypes(dirs):
+    bronze_dir, silver_dir = dirs
+    bronze = mccs.make_bronze()
+    save_bronze(bronze, bronze_dir, mcc_partition("9675cfab77d6"))
+
+    assert run_mcc("9675cfab77d6", bronze_dir, silver_dir) == 3
+
+    written = read_silver(silver_dir, "mcc/version=9675cfab77d6")
+    assert {c: str(t) for c, t in written.dtypes.items()} == MCC_SILVER_SCHEMA
+    assert written["mcc"].tolist() == ["0742", "5411", "5999"]  # leading zero kept
+    assert (written["_version"] == "9675cfab77d6").all()
+    assert "version" not in written.columns
+    pd.testing.assert_frame_equal(written, transform_mcc(bronze, "9675cfab77d6"))
+
+
+def test_mcc_rerun_overwrites_and_bad_batch_keeps_existing(dirs):
+    bronze_dir, silver_dir = dirs
+    save_bronze(mccs.make_bronze(), bronze_dir, mcc_partition("9675cfab77d6"))
+    for _ in range(2):
+        run_mcc("9675cfab77d6", bronze_dir, silver_dir)
+    part_dir = silver_dir / mcc_partition("9675cfab77d6")
+    assert [p.name for p in part_dir.iterdir()] == [PART_FILE]
+    before = read_silver(silver_dir, mcc_partition("9675cfab77d6"))
+
+    bad = mccs.make_bronze([{"mcc": "54A1"}])
+    bad.to_parquet(bronze_dir / mcc_partition("9675cfab77d6") / PART_FILE, index=False)
+    with pytest.raises(SilverValidationError, match="is not 4 digits"):
+        run_mcc("9675cfab77d6", bronze_dir, silver_dir)
+    pd.testing.assert_frame_equal(read_silver(silver_dir, mcc_partition("9675cfab77d6")), before)
+
+
+def test_mcc_missing_bronze_partition_fails(dirs):
+    bronze_dir, silver_dir = dirs
+    with pytest.raises(FileNotFoundError, match="version=9675cfab77d6"):
+        run_mcc("9675cfab77d6", bronze_dir, silver_dir)
+
+
+def test_version_comes_from_the_folder_name():
+    assert version_from_folder("version=9675cfab77d6") == "9675cfab77d6"
+    for bad in ["vintage=2019", "version=", "9675cfab77d6", "versions=9675cfab77d6"]:
+        with pytest.raises(ValueError, match="version=<hash>"):
+            version_from_folder(bad)
+
+
+def test_pinned_version_is_the_folder_bronze_writes():
+    folder = bronze_mcc_partition_path(PINNED_COMMIT, Path("x")).parent.name
+    assert folder == f"version={pinned_mcc_version()}"
+    assert PINNED_COMMIT.startswith(pinned_mcc_version())
 
 
 def test_reading_the_file_adds_no_partition_column(dirs):

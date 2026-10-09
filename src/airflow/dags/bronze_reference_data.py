@@ -4,8 +4,7 @@ followed by their Silver partitions.
 Manual trigger only (schedule=None): each source is pinned to a version
 (year, commit, vintage), so it is re-run deliberately when a version changes.
 The four Bronze tasks are independent and run in parallel; each Silver task runs
-after its own Bronze task. MCC has no Silver step (its mapping comes later as a
-dbt seed).
+after its own Bronze task.
 """
 
 from datetime import timedelta
@@ -87,8 +86,17 @@ def bronze_reference_data():
 
         return fail_fast_on_validation_error(AirflowFailException)(run_census_acs)(CENSUS_VINTAGE)
 
+    @task(retries=1, retry_delay=timedelta(minutes=1))
+    def silver_mcc() -> int:
+        from airflow.sdk.exceptions import AirflowFailException
+
+        from src.pipeline.silver_jobs import fail_fast_on_validation_error, pinned_mcc_version, run_mcc
+
+        # The version comes from the pinned Bronze partition's folder name.
+        return fail_fast_on_validation_error(AirflowFailException)(run_mcc)(pinned_mcc_version())
+
     holidays() >> silver_holidays()
-    mcc()
+    mcc() >> silver_mcc()
     census_zcta() >> silver_census_zcta()
     census_acs() >> silver_census_acs()
 

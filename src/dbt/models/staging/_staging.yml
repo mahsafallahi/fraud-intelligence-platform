@@ -1,7 +1,7 @@
 version: 2
 
 # Primary-key tests on the staging views, plus: every transaction category has a
-# row in the MCC seed. stg_mcc_codes is added once Silver MCC exists.
+# row in the MCC seed (and, in seeds.yml, every seed mcc exists in stg_mcc_codes).
 models:
   - name: stg_transactions
     description: Silver transactions, select only.
@@ -37,6 +37,17 @@ models:
             column_name: "zip || '|' || _vintage"
     columns:
       - name: zip
+        data_tests:
+          - not_null
+
+  - name: stg_mcc_codes
+    description: Silver MCC reference, select only (code and description).
+    columns:
+      - name: mcc
+        data_tests:
+          - unique
+          - not_null
+      - name: description
         data_tests:
           - not_null
 

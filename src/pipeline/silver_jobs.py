@@ -40,6 +40,7 @@ import pandas as pd
 from src.silver.census_acs import transform_census_acs
 from src.silver.census_zcta import transform_census_zcta
 from src.silver.holidays import transform_holidays
+from src.silver.mcc import transform_mcc
 from src.silver.transactions import SilverValidationError, transform_transactions
 from src.utils.parquet import write_parquet_atomic
 from src.utils.paths import BRONZE_DIR, SILVER_DIR
@@ -70,6 +71,29 @@ def census_zcta_partition(vintage: int) -> str:
 
 def holidays_partition(country: str, year: int) -> str:
     return f"holidays/country={country}/year={year}"
+
+
+def mcc_partition(version: str) -> str:
+    return f"mcc/version={version}"
+
+
+def version_from_folder(folder_name: str) -> str:
+    """'version=9675cfab77d6' -> '9675cfab77d6'."""
+    key, sep, value = folder_name.partition("=")
+    if key != "version" or not sep or not value:
+        raise ValueError(f"not a version=<hash> folder name: {folder_name!r}")
+    return value
+
+
+def pinned_mcc_version() -> str:
+    """Version of the pinned Bronze MCC partition, taken from its folder name.
+
+    The folder comes from the Bronze ingestion code, so Silver always reads
+    exactly the partition that Bronze wrote.
+    """
+    from src.ingestion.bronze_mcc import PINNED_COMMIT, partition_path
+
+    return version_from_folder(partition_path(PINNED_COMMIT, Path(".")).parent.name)
 
 
 # --- 2. Read / write -----------------------------------------------------------
@@ -130,6 +154,14 @@ def run_holidays(
     return _write_silver(silver, partition, silver_dir)
 
 
+def run_mcc(
+    version: str, bronze_dir: Path = BRONZE_DIR, silver_dir: Path = SILVER_DIR
+) -> int:
+    partition = mcc_partition(version)
+    silver = transform_mcc(_read_bronze(partition, bronze_dir), version)
+    return _write_silver(silver, partition, silver_dir)
+
+
 # --- 4. Fail fast on data errors (used by the Airflow tasks) --------------------
 
 F = TypeVar("F", bound=Callable)
@@ -172,7 +204,7 @@ def main() -> None:
     tx.add_argument("--start", type=date.fromisoformat, help="first day of a range")
     tx.add_argument("--end", type=date.fromisoformat, help="last day of a range, inclusive")
 
-    sub.add_parser("reference", help="holidays, Census ACS and Census Gazetteer")
+    sub.add_parser("reference", help="holidays, Census ACS, Census Gazetteer and MCC")
     args = parser.parse_args()
 
     if args.source == "transactions":
@@ -197,6 +229,7 @@ def main() -> None:
         total = sum(run_holidays(HOLIDAY_COUNTRY, year) for year in HOLIDAY_YEARS)
         total += run_census_acs(CENSUS_VINTAGE)
         total += run_census_zcta(CENSUS_VINTAGE)
+        total += run_mcc(pinned_mcc_version())
         log.info("Silver reference data: %d rows", total)
 
 

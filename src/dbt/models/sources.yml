@@ -28,9 +28,6 @@ sources:
           external_location: "read_parquet('{{ env_var('DATA_DIR', '../../data') }}/silver/holidays/*/*/part-0.parquet', hive_partitioning = false)"
 
       - name: mcc
-        description: >
-          Merchant category codes. Silver MCC is not built yet (planned in
-          src/silver/); stg_mcc_codes is added once it exists. The folder layout
-          is not fixed yet, so every Parquet file below silver/mcc/ is read.
+        description: Merchant category codes, one row per code (version folders, one per pinned commit).
         config:
-          external_location: "read_parquet('{{ env_var('DATA_DIR', '../../data') }}/silver/mcc/**/*.parquet', hive_partitioning = false)"
+          external_location: "read_parquet('{{ env_var('DATA_DIR', '../../data') }}/silver/mcc/*/part-0.parquet', hive_partitioning = false)"

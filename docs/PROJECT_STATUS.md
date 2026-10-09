@@ -1,7 +1,7 @@
 # Fraud Intelligence Platform — Project Status
 
 **Last updated:** 2026-10-09
-**Current step:** Phase 2 → steps 1 and 2 of 5 done (star schema and MCC mapping designed); step 3 (Gold tooling): dbt scaffolding done, staging built and tested. Next: the author writes the Silver MCC transform and the intermediate/marts SQL.
+**Current step:** Phase 2 → steps 1 and 2 of 5 done (star schema and MCC mapping designed); step 3 (Gold tooling): dbt scaffolding done, Silver MCC added, all 5 staging models and the seed built and tested. Next: the author writes the intermediate/marts SQL.
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
 
@@ -47,7 +47,7 @@ Each phase ends with its own commit, e.g. `Phase 1: ...`.
 - `data/raw/` — original downloads, never modified.
 - `data/landing/` — daily files produced by the feed simulator (plays the role of the bank).
 - `data/bronze/<source>/...` — data exactly as received, in Parquet, partitioned: transactions by `batch_date`, holidays by `country`/`year`, MCC by `version` (commit), Census Gazetteer and ACS by `vintage`.
-- `data/silver/<source>/...` — cleaned, typed and validated data, one Parquet file per partition, same partitioning as Bronze: `transactions/batch_date=YYYY-MM-DD/`, `census_acs/vintage=YYYY/`, `census_zcta/vintage=YYYY/`, `holidays/country=XX/year=YYYY/`. MCC has no Silver layer (its category mapping comes as a dbt seed). Written by `src/pipeline/silver_jobs.py`: read one Bronze partition file, run the pure transform from `src/silver/`, write atomically; the transforms' dtypes (including nullable `Int64` and `date32`) are kept exactly.
+- `data/silver/<source>/...` — cleaned, typed and validated data, one Parquet file per partition, same partitioning as Bronze: `transactions/batch_date=YYYY-MM-DD/`, `census_acs/vintage=YYYY/`, `census_zcta/vintage=YYYY/`, `holidays/country=XX/year=YYYY/`, `mcc/version=<hash>/` (one row per code with its edited description; the version is taken from the Bronze folder name). Written by `src/pipeline/silver_jobs.py`: read one Bronze partition file, run the pure transform from `src/silver/`, write atomically; the transforms' dtypes (including nullable `Int64` and `date32`) are kept exactly.
 - `data/gold/` — modelled layer: star schema designed in `docs/star_schema_design.md` (fact_transactions + dim_card, dim_merchant, dim_location, dim_date); not built yet.
 - All data folders are git-ignored; only `.gitkeep` files are committed.
 - Bronze keeps every business column as a string (CSV/file sources) or the raw response body in one `response_body` column (API sources: holidays, Census ACS), and adds `_`-prefixed metadata. All sources have `_ingested_at` (UTC) and `_source`; the rest depends on the source:
@@ -67,7 +67,7 @@ Each phase ends with its own commit, e.g. `Phase 1: ...`.
 - UI at `http://localhost:8080`, no login. Acceptable only because it is bound to `127.0.0.1` for local development.
 - `src/` and `data/` are mounted into the containers; code changes need no image rebuild.
 - DAG `bronze_transactions_daily`: daily data-interval schedule (the run for day D starts after D ends) from 2019-01-01 to 2020-12-31 with catch-up; at most 4 runs at once. `ingest_transactions` (Bronze; 3 retries, 5 minutes apart) → `silver_transactions` (Silver for the same day; loads the PII key once per run).
-- DAG `bronze_reference_data`: manual trigger only; holidays, MCC, Census ZIP and Census ACS run in parallel (2 retries, 2 minutes apart), each followed by its Silver task (`silver_holidays`, `silver_census_zcta`, `silver_census_acs`).
+- DAG `bronze_reference_data`: manual trigger only; holidays, MCC, Census ZIP and Census ACS run in parallel (2 retries, 2 minutes apart), each followed by its Silver task (`silver_holidays`, `silver_census_zcta`, `silver_census_acs`, `silver_mcc`). `silver_mcc` was added to the DAG code on 2026-10-09 but has not run in Airflow yet (Silver MCC was built locally with the CLI function).
 - Silver tasks: 1 retry (1 minute) for transient problems; a `SilverValidationError` is converted to `AirflowFailException` (`airflow.sdk.exceptions`) and fails at once.
 - Full Bronze backfill completed: 731 daily runs, all successful, row counts verified against raw.
 - Historical Silver built on 2026-10-02 inside Airflow (REST clear with `only_new`, see Key decisions): 731 transaction runs + the reference run, every task successful on its first try, Bronze byte-identical before and after. Verified:
@@ -161,7 +161,8 @@ Phase 2 (Gold), steps 1–2 of 5 done; dbt not started:
 - [x] Profile the full Silver layer (`notebooks/02_star_schema_design.ipynb`) and write the star schema design (`docs/star_schema_design.md`)
 - [x] Design the category → MCC mapping (14 rows, 11 codes, `channel` column)
 - [x] Set up the Gold tooling (dbt-core 1.12.5 + dbt-duckdb 1.11.0 + duckdb 1.5.6 in `.venv-dbt`, project in `src/dbt`, DuckDB file `data/gold/fraud.duckdb`) and create the seed file from the mapping table
-- [ ] Silver MCC transform (author), then `stg_mcc_codes` and the test that every seed `mcc` exists in it; narrow the `silver.mcc` source path
+- [x] Silver MCC transform (author: `src/silver/mcc.py`, 18 tests), wired into the Silver writer and the reference DAG; `stg_mcc_codes` (981 codes) and the test that every seed `mcc` exists in it; `silver.mcc` source path narrowed to `mcc/*/part-0.parquet`
+- [ ] Next time Docker runs: full Airflow parse of the reference DAG and one run of `silver_mcc` (only checked locally so far: the DAG file compiles and the wiring is right)
 - [ ] Build `fact_transactions` and the four dimensions
 - [ ] Generate `dim_date` as a calendar (731 days), not from distinct transaction dates (that gives 730: no transactions on 2020-02-29)
 - [ ] Pass the design's checks: fact rows = Silver rows; `trans_num` unique; every foreign key finds exactly one dimension row; dim_card 999, dim_merchant 700, dim_location 985, dim_date 731; fraud total 9,651
@@ -206,7 +207,7 @@ Phase 1 Silver layer (complete):
 - Windows 11, 32 GB RAM, PyCharm, Docker Desktop.
 - Python 3.14.6 in `.venv`; pandas 3.0.5, pyarrow 25.0.1, requests 2.34.2, python-dotenv 1.2.3.
 - The Airflow Docker image uses Python 3.12 with the same package versions. 3.12 was chosen as a mature, widely supported version for Airflow; images for 3.13 and 3.14 also exist.
-- Dev tools: ipykernel, nbconvert, pytest. The test suite (149 tests) passed at the last run.
+- Dev tools: ipykernel, nbconvert, pytest. The test suite (172 tests) passed at the last run. dbt runs from `src/dbt` with `.venv-dbt`.
 
 ---
 
@@ -244,6 +245,7 @@ Never add `-v` to that command: it deletes the Airflow volumes.
 | 2026-10-05 | Phase 2 step 1 (author, commit `5afc439`): profiled the full Silver layer in `02_star_schema_design.ipynb`; star schema designed in `docs/star_schema_design.md`: fact grain one transaction, star not snowflake, dim_card 999, dim_merchant on name + category 700 (693 names), dim_location from transaction ZIPs 985, dim_date 731, missing income null with `has_income`, holidays collapsed per date and state. |
 | 2026-10-09 | Phase 2 step 2 (author, commit `13093ed`): category → MCC mapping designed as a 14-row seed (11 distinct codes) with a separate `channel` column. Status file updated. |
 | 2026-10-09 | Phase 2 step 3, dbt scaffolding: separate `.venv-dbt` (Python 3.14.6; dbt-core 1.12.5, dbt-duckdb 1.11.0, duckdb 1.5.6), `dbt debug` passed without setting `DATA_DIR`. Project in `src/dbt` (run from that folder): Silver sources read with `hive_partitioning = false` (no duplicate date column), 4 staging views (select only), 14-row seed verbatim from the design, all design checks as tests (`_marts.yml`, 1 custom generic + 3 singular tests; they activate once the author's models exist; `dim_date` column named `calendar_date`). `dbt seed` + `dbt build --select staging`: 14/14 passed; rows 1,852,394 / 33,120 / 33,144 / 160, seed 14. Staging views store relative paths, so outside dbt only the mart tables are queried. |
+| 2026-10-09 | Silver MCC: transform `src/silver/mcc.py` with 18 tests (author); wired into `silver_jobs.py` (`run_mcc`, version taken from the `version=<hash>` folder name) with 5 pipeline tests, and added to the reference DAG as `silver_mcc` (code only; Docker not started). Built locally once: 981 rows, 981 distinct codes, 3 with a leading zero, schema `mcc`, `description`, `_ingested_at`, `_source`, `_content_sha256`, `_version`. dbt: `stg_mcc_codes` (981 rows) with unique/not_null tests, seed test that every `mcc` exists in it (14 of 14 rows, 11 of 11 codes found), `silver.mcc` path narrowed. `dbt build --select staging category_mcc_map`: 25/25 passed. Full pytest suite: 172 passed. |
 
 ---
 
