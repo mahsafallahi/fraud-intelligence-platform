@@ -14,7 +14,7 @@ One row in the fact table = one card transaction (1,852,394 rows, 9,651 fraud).
 |---|---|---|---|---|
 | fact_transactions | one transaction | 1,852,394 | trans_num, trans_ts, amt, is_fraud, merch_lat, merch_long, _batch_date | card_key, merchant_key, location_key, date_key, distance_km, is_public_holiday_in_state |
 | dim_card | one card | 999 | card_hash, gender, birth_year, job | card_key |
-| dim_merchant | one merchant name + category | 700 | merchant, category | merchant_key, MCC code and description (from a 14-row seed) |
+| dim_merchant | one merchant name + category | 700 | merchant, category | merchant_key, MCC code and description, channel (from a 14-row seed) |
 | dim_location | one ZIP code seen in transactions | 985 | zip, city, state, city_pop | location_key, population, median_household_income, has_income, median_age, land_area_m2, water_area_m2, centroid_lat, centroid_long |
 | dim_date | one calendar day | 731 | derived from trans_ts | date_key, day of week, month, year, is_weekend, is_nationwide_public_holiday, is_bank_holiday |
 
@@ -100,7 +100,49 @@ date x state dimension of 37,281 rows (too heavy for one flag).
 - Row counts: dim_card 999, dim_merchant 700, dim_location 985, dim_date 731.
 - Fraud total stays 9,651.
 
+## Category to MCC mapping (dbt seed, 14 rows)
+
+The 14 categories come from the simulator; MCC is the real-world standard.
+The mapping is approximate by nature: one category covers many MCCs, so each
+row is a representative code, chosen with one consistent rule:
+the MCC describes what is sold, and a separate `channel` column keeps the
+in-person / online split that an MCC cannot express.
+MCC descriptions are joined from the reference table, never typed by hand.
+
+| category | mcc | channel |
+|---|---|---|
+| entertainment | 7999 | unknown |
+| food_dining | 5812 | unknown |
+| gas_transport | 5541 | unknown |
+| grocery_pos | 5411 | in_person |
+| grocery_net | 5411 | online |
+| health_fitness | 7997 | unknown |
+| home | 5712 | unknown |
+| kids_pets | 5995 | unknown |
+| misc_pos | 5999 | in_person |
+| misc_net | 5999 | online |
+| personal_care | 7230 | unknown |
+| shopping_pos | 5311 | in_person |
+| shopping_net | 5311 | online |
+| travel | 4722 | unknown |
+
+Notes:
+- 14 categories map to 11 distinct codes, so the key of the seed is
+  `category`, not `mcc`.
+- Rejected: "direct marketing" codes (5964, 5969) for the online categories.
+  That would apply a different rule to shopping and misc than to grocery.
+- Weakest row: kids_pets. No single MCC covers both children's goods and
+  pets; 5995 (pet shops) is a documented compromise.
+- `channel` is `unknown` for 8 categories: the simulator does not say, and
+  we do not guess.
+- Why channel matters (descriptive, not yet tested): under the same MCC the
+  fraud rate differs sharply by channel, and not always in the same
+  direction: 5311 is 0.634% in person vs 1.593% online, 5999 is 0.282% vs
+  1.304%, but 5411 is 1.265% in person vs 0.270% online. Three categories
+  (grocery_pos, shopping_net, misc_net) hold 22% of transactions and 58% of
+  fraud.
+
 ## Open items
 
-- The 14-row category -> MCC mapping (dbt seed).
-- Tooling setup for the Gold layer.
+- Tooling setup for the Gold layer; the seed file is created from the
+  table above once the project structure exists.
