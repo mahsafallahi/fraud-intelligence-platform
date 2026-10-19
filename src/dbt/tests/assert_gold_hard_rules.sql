@@ -1,6 +1,8 @@
 -- Hard data-quality rules for the Gold layer: any violation fails the build.
 -- Each block returns one row (rule name + number of bad rows) only when its
 -- rule is broken, so the test passes when the whole query returns nothing.
+-- Rows whose date differs from their batch date are NOT checked here: late
+-- arrivals are normal in real feeds (see the soft rules).
 
 with fact as (select * from {{ ref('fact_transactions') }}),
 cards as (select * from {{ ref('dim_card') }}),
@@ -14,11 +16,6 @@ having count(*) > 0
 union all
 select 'transaction outside 2019-2020', count(*)
 from fact where trans_ts < timestamp '2019-01-01' or trans_ts >= timestamp '2021-01-01'
-having count(*) > 0
-
-union all
-select 'row in the wrong daily partition', count(*)
-from fact where cast(trans_ts as date) <> _batch_date
 having count(*) > 0
 
 union all
