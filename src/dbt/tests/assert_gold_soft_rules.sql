@@ -27,3 +27,10 @@ left join (select distinct date_key from fact) as days_with_data
 where days_with_data.date_key is null
   and dates.calendar_date <> date '2020-02-29'
 having count(*) > 0
+
+union all
+-- Late arrivals are normal in real feeds, so this only warns.
+select 'rows whose date differs from their batch date', count(*)
+from fact
+where cast(trans_ts as date) <> _batch_date
+having count(*) > 0
