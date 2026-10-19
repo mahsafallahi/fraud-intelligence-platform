@@ -1,7 +1,8 @@
 # Star Schema Design (Gold layer)
 
-Status: design approved on 2026-10-05. Implementation (dbt) not started.
-Evidence for every number below: `notebooks/02_star_schema_design.ipynb`,
+Status: design approved on 2026-10-05; implemented in dbt on 2026-10-19
+(`src/dbt/models/`), 64 of 64 dbt nodes passing (11 models, 1 seed, 52 tests).
+Evidence for every design number below: `notebooks/02_star_schema_design.ipynb`,
 run on the full Silver layer (731 daily partitions).
 
 ## Grain
@@ -14,9 +15,9 @@ One row in the fact table = one card transaction (1,852,394 rows, 9,651 fraud).
 |---|---|---|---|---|
 | fact_transactions | one transaction | 1,852,394 | trans_num, trans_ts, amt, is_fraud, merch_lat, merch_long, _batch_date | card_key, merchant_key, location_key, date_key, distance_km, is_public_holiday_in_state |
 | dim_card | one card | 999 | card_hash, gender, birth_year, job | card_key |
-| dim_merchant | one merchant name + category | 700 | merchant, category | merchant_key, MCC code and description, channel (from a 14-row seed) |
+| dim_merchant | one merchant name + category | 700 | merchant, category | merchant_key, mcc, mcc_description, channel (from a 14-row seed) |
 | dim_location | one ZIP code seen in transactions | 985 | zip, city, state, city_pop | location_key, population, median_household_income, has_income, median_age, land_area_m2, water_area_m2, centroid_lat, centroid_long |
-| dim_date | one calendar day | 731 | derived from trans_ts | date_key, day of week, month, year, is_weekend, is_nationwide_public_holiday, is_bank_holiday |
+| dim_date | one calendar day, generated from 2019-01-01 to 2020-12-31 | 731 | none (generated calendar, not derived from transaction dates) | date_key, calendar_date, calendar_year, calendar_month, day_of_month, day_of_week (1 = Monday), day_name, is_weekend, is_nationwide_public_holiday, is_bank_holiday, nationwide_holiday_name |
 
 Not carried into Gold: customer lat/long (Silver only; Gold exposes distance),
 _ingested_at, _source, _source_file.
@@ -24,11 +25,17 @@ _ingested_at, _source, _source_file.
 `trans_num` stays in the fact table as a degenerate dimension (the business
 identifier of the transaction, used for tracing and uniqueness tests).
 
+Keys: surrogate keys are md5 of the natural key (card_hash; merchant || '|' ||
+category; zip), so they are stable across rebuilds and the fact table computes
+them with the same expression instead of joining the dimensions. The exception
+is `date_key`, the readable integer YYYYMMDD, which is the usual convention.
+
 ## Decisions and the evidence behind them
 
 ### 1. Card attributes are stable, so dim_card is a simple (Type 1) dimension
 For all 999 cards, gender, birth year, job, city, state and ZIP never change
-in the two years of data. No history tracking is needed.
+in the two years of data. No history tracking is needed. If an attribute ever
+changes, the card gets two rows and the unique test on card_hash fails.
 
 ### 2. Location attributes belong to the ZIP code, not to the card
 City, state, coordinates and city population are fully determined by ZIP
@@ -72,17 +79,23 @@ Also: 12 ZIPs have no median age and 8 have zero population.
 Silver holidays has 160 rows (20 nationwide, 140 state level) and several
 types. Only `Public` and `Bank` are flagged; `Observance`, `Optional` and
 `Authorities,School` are not days off.
-- Nationwide holidays (20 rows on 20 distinct dates) go into dim_date as
-  is_nationwide_public_holiday and is_bank_holiday.
-- State-level holidays are first collapsed to one row per (date, state),
-  then joined to set is_public_holiday_in_state on the fact table
-  (nationwide public OR state public).
+- Nationwide holidays (20 rows on 20 distinct dates) are collapsed to one row
+  per date and go into dim_date as is_nationwide_public_holiday and
+  is_bank_holiday.
+- State-level public holidays are collapsed to one row per (date, state) in
+  `int_state_public_holidays`, then joined to set is_public_holiday_in_state
+  on the fact table (nationwide public OR state public).
 A direct join to the raw holiday rows would duplicate 948 transactions,
 because one state can have two holiday records on the same day.
 Prototype result: 0 extra rows; 52,496 transactions on a public holiday
 (46,917 nationwide + 5,579 state level, no overlap); 53,247 on a bank holiday.
 Rejected: a bridge table left to analysts (easy to fan out), and a
 date x state dimension of 37,281 rows (too heavy for one flag).
+
+### 9. dim_date is a generated calendar
+2020-02-29 has no transactions, so a calendar derived from transaction dates
+would have 730 days. The calendar is generated for the whole period (731 days)
+and a test checks that it is complete.
 
 ## Known limitations
 
@@ -99,6 +112,15 @@ date x state dimension of 37,281 rows (too heavy for one flag).
 - trans_num is unique; every foreign key finds exactly one dimension row.
 - Row counts: dim_card 999, dim_merchant 700, dim_location 985, dim_date 731.
 - Fraud total stays 9,651.
+
+## Implementation results (2026-10-19)
+
+- All checks above pass as dbt tests (52 tests, 0 failures).
+- Reconciliation of untested columns against the pandas prototype:
+  is_public_holiday_in_state is true for 52,496 transactions, exactly the
+  prototype number.
+- distance_km (haversine, customer ZIP point to merchant point): minimum
+  0.022 km, median about 78.2 km, maximum 152.117 km.
 
 ## Category to MCC mapping (dbt seed, 14 rows)
 
@@ -144,5 +166,5 @@ Notes:
 
 ## Open items
 
-- Tooling setup for the Gold layer; the seed file is created from the
-  table above once the project structure exists.
+- Run the Gold build in Airflow after Silver (separate DAG, Asset-triggered).
+- Decide whether Great Expectations adds value on top of the dbt tests.
