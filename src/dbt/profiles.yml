@@ -1,10 +1,23 @@
-# Local DuckDB file, no credentials. DATA_DIR defaults to the project's data
+# Local DuckDB files, no credentials. DATA_DIR defaults to the project's data
 # folder relative to src/dbt (run dbt from src/dbt); in Docker it is set by the
 # container, as for the Python pipeline.
+#
+# Two targets, so the DuckDB file never has two writers:
+#   dev     (default, Windows)  -> data/gold/fraud_dev.duckdb
+#   airflow (gold_dbt DAG only) -> data/gold/fraud.duckdb
+# Airflow is the only writer of fraud.duckdb; other readers open it read-only.
 fraud_gold:
   target: dev
   outputs:
     dev:
       type: duckdb
-      path: "{{ env_var('DATA_DIR', '../../data') }}/gold/fraud.duckdb"
+      path: "{{ env_var('DATA_DIR', '../../data') }}/gold/fraud_dev.duckdb"
       threads: 4
+    airflow:
+      type: duckdb
+      path: "{{ env_var('DATA_DIR', '../../data') }}/gold/fraud.duckdb"
+      threads: 2
+      settings:
+        # The build runs inside the scheduler container (2.5 GiB limit); DuckDB
+        # would otherwise size its memory from the whole VM.
+        memory_limit: "1GB"

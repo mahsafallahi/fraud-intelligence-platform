@@ -10,7 +10,9 @@ after its own Bronze task.
 from datetime import timedelta
 
 import pendulum
-from airflow.sdk import dag, task
+from airflow.sdk import Asset, dag, task
+
+from src.pipeline.assets import SILVER_REFERENCE
 
 # Years/vintage covered by the transactions data (2019-01-01 .. 2020-12-31).
 HOLIDAY_COUNTRY = "US"
@@ -59,9 +61,10 @@ def bronze_reference_data():
         mask_secret(api_key)  # explicit, in addition to Airflow's name-based masking
         return ingest(CENSUS_VINTAGE, api_key=api_key)
 
-    # --- Silver: 1 retry for transient problems; data errors fail at once ---
+    # --- Silver: 1 retry for transient problems; data errors fail at once.
+    # Each Silver task updates the Asset that triggers the gold_dbt DAG. ---
 
-    @task(retries=1, retry_delay=timedelta(minutes=1))
+    @task(retries=1, retry_delay=timedelta(minutes=1), outlets=[Asset(SILVER_REFERENCE)])
     def silver_holidays() -> int:
         from airflow.sdk.exceptions import AirflowFailException
 
@@ -70,7 +73,7 @@ def bronze_reference_data():
         run = fail_fast_on_validation_error(AirflowFailException)(run_holidays)
         return sum(run(HOLIDAY_COUNTRY, year) for year in HOLIDAY_YEARS)
 
-    @task(retries=1, retry_delay=timedelta(minutes=1))
+    @task(retries=1, retry_delay=timedelta(minutes=1), outlets=[Asset(SILVER_REFERENCE)])
     def silver_census_zcta() -> int:
         from airflow.sdk.exceptions import AirflowFailException
 
@@ -78,7 +81,7 @@ def bronze_reference_data():
 
         return fail_fast_on_validation_error(AirflowFailException)(run_census_zcta)(CENSUS_VINTAGE)
 
-    @task(retries=1, retry_delay=timedelta(minutes=1))
+    @task(retries=1, retry_delay=timedelta(minutes=1), outlets=[Asset(SILVER_REFERENCE)])
     def silver_census_acs() -> int:
         from airflow.sdk.exceptions import AirflowFailException
 
@@ -86,7 +89,7 @@ def bronze_reference_data():
 
         return fail_fast_on_validation_error(AirflowFailException)(run_census_acs)(CENSUS_VINTAGE)
 
-    @task(retries=1, retry_delay=timedelta(minutes=1))
+    @task(retries=1, retry_delay=timedelta(minutes=1), outlets=[Asset(SILVER_REFERENCE)])
     def silver_mcc() -> int:
         from airflow.sdk.exceptions import AirflowFailException
 

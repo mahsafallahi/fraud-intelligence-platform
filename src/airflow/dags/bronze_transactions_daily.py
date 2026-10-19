@@ -14,8 +14,10 @@ Each run then builds the Silver partition for the same day (silver_transactions)
 from datetime import timedelta
 
 import pendulum
-from airflow.sdk import dag, task
+from airflow.sdk import Asset, dag, task
 from airflow.timetables.interval import CronDataIntervalTimetable
+
+from src.pipeline.assets import SILVER_TRANSACTIONS
 
 
 @dag(
@@ -43,7 +45,8 @@ def bronze_transactions_daily():
 
     # 1 retry for transient problems (I/O, container restart); data errors
     # (SilverValidationError) become AirflowFailException and fail at once.
-    @task(retries=1, retry_delay=timedelta(minutes=1))
+    # On success it updates the Asset that triggers the gold_dbt DAG.
+    @task(retries=1, retry_delay=timedelta(minutes=1), outlets=[Asset(SILVER_TRANSACTIONS)])
     def silver_transactions(data_interval_start=None) -> int:
         from airflow.sdk import Variable
         from airflow.sdk.exceptions import AirflowFailException

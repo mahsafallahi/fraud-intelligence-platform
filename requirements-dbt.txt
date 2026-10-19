@@ -1,5 +1,8 @@
-# Gold layer tooling, installed in its own virtualenv (.venv-dbt), not in .venv.
+# Gold layer tooling, installed in its own virtualenv (.venv-dbt, Python 3.12), not in .venv.
+# dbt-core 1.11.x: 1.12 requires dbt-core-experimental-parser, which downloads a
+# binary from GitHub at install time; 1.11 installs everything from PyPI.
 # The duckdb version must match wherever the DuckDB file is opened (file format).
-dbt-core==1.12.5
+# The Docker image installs from requirements-dbt.lock (every package pinned).
+dbt-core==1.11.16
 dbt-duckdb==1.11.0
 duckdb==1.5.6

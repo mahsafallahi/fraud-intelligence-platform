@@ -17,3 +17,13 @@ RUN pip install --no-cache-dir \
       "apache-airflow[postgres]==${AIRFLOW_VERSION}" \
       -r /tmp/requirements.txt \
       --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+
+# dbt for the Gold layer, in its own virtualenv: it never mixes with Airflow's
+# constraint-pinned packages. The lock file pins every package (not only the
+# three top-level ones), so rebuilds are reproducible. /opt is owned by root,
+# so the venv is created as root; it is readable and runnable by the airflow user.
+COPY requirements-dbt.lock /tmp/requirements-dbt.lock
+USER root
+RUN python -m venv /opt/dbt-venv \
+ && /opt/dbt-venv/bin/pip install --no-cache-dir -r /tmp/requirements-dbt.lock
+USER airflow

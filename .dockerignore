@@ -1,4 +1,5 @@
-# The build only needs requirements.txt; code and data are mounted at runtime.
-# Excluding everything else keeps data/ (~1 GB), .venv and .env out of the build.
+# The build only needs the requirement files; code and data are mounted at runtime.
+# Excluding everything else keeps data/ (~1 GB), the venvs and .env out of the build.
 *
 !requirements.txt
+!requirements-dbt.lock

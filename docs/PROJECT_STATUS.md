@@ -1,7 +1,7 @@
 # Fraud Intelligence Platform — Project Status
 
-**Last updated:** 2026-10-09
-**Current step:** Phase 2 → steps 1 and 2 of 5 done (star schema and MCC mapping designed); step 3 (Gold tooling): dbt scaffolding done, Silver MCC added, all 5 staging models and the seed built and tested. Next: the author writes the intermediate/marts SQL.
+**Last updated:** 2026-10-19
+**Current step:** Phase 2 complete (Gold star schema built and tested in dbt, orchestrated by the asset-triggered `gold_dbt` DAG). Next: Phase 3, exploratory analysis and hypothesis testing.
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
 
@@ -18,7 +18,7 @@ An end-to-end financial fraud detection platform that demonstrates both **Data E
 | # | Phase | Main role | Status |
 |---|---|---|---|
 | 1 | Ingestion, Bronze and Silver layers, Airflow | Data Engineering | ✅ Complete: Bronze ✅, Silver ✅, Airflow ✅ (transactions, holidays, Census ACS, Census Gazetteer) |
-| 2 | Star-schema warehouse (dbt) and data quality (Great Expectations) | Data Engineering | 🔄 In progress: steps 1–2 of 5 done (star schema design ✅, category → MCC mapping ✅); step 3 in progress (dbt scaffolding ✅, marts SQL ⬜) |
+| 2 | Star-schema warehouse (dbt) and data quality (Great Expectations) | Data Engineering | ✅ Complete: star schema design ✅, category → MCC mapping ✅, dbt tooling ✅, Gold models + quality rules ✅, `gold_dbt` DAG ✅ (Great Expectations evaluated, not used: dbt tests cover every check) |
 | 3 | Exploratory analysis and hypothesis testing | Data Science | ⬜ Not started |
 | 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | ⬜ Not started |
 | 5 | Causal inference on fraud risk drivers | Data Science | ⬜ Not started |
@@ -48,7 +48,9 @@ Each phase ends with its own commit, e.g. `Phase 1: ...`.
 - `data/landing/` — daily files produced by the feed simulator (plays the role of the bank).
 - `data/bronze/<source>/...` — data exactly as received, in Parquet, partitioned: transactions by `batch_date`, holidays by `country`/`year`, MCC by `version` (commit), Census Gazetteer and ACS by `vintage`.
 - `data/silver/<source>/...` — cleaned, typed and validated data, one Parquet file per partition, same partitioning as Bronze: `transactions/batch_date=YYYY-MM-DD/`, `census_acs/vintage=YYYY/`, `census_zcta/vintage=YYYY/`, `holidays/country=XX/year=YYYY/`, `mcc/version=<hash>/` (one row per code with its edited description; the version is taken from the Bronze folder name). Written by `src/pipeline/silver_jobs.py`: read one Bronze partition file, run the pure transform from `src/silver/`, write atomically; the transforms' dtypes (including nullable `Int64` and `date32`) are kept exactly.
-- `data/gold/` — modelled layer: star schema designed in `docs/star_schema_design.md` (fact_transactions + dim_card, dim_merchant, dim_location, dim_date); not built yet.
+- `data/gold/` — the Gold star schema (fact_transactions + dim_card, dim_merchant, dim_location, dim_date; design in `docs/star_schema_design.md`), built by dbt as DuckDB tables in two files that never share a writer:
+  - `fraud.duckdb`: written only by Airflow (`gold_dbt`, dbt target `airflow`); everyone else opens it read-only;
+  - `fraud_dev.duckdb`: written by local dbt runs on Windows (default target `dev`).
 - All data folders are git-ignored; only `.gitkeep` files are committed.
 - Bronze keeps every business column as a string (CSV/file sources) or the raw response body in one `response_body` column (API sources: holidays, Census ACS), and adds `_`-prefixed metadata. All sources have `_ingested_at` (UTC) and `_source`; the rest depends on the source:
   - transactions: `_source_file`, `_batch_date`
@@ -67,14 +69,17 @@ Each phase ends with its own commit, e.g. `Phase 1: ...`.
 - UI at `http://localhost:8080`, no login. Acceptable only because it is bound to `127.0.0.1` for local development.
 - `src/` and `data/` are mounted into the containers; code changes need no image rebuild.
 - DAG `bronze_transactions_daily`: daily data-interval schedule (the run for day D starts after D ends) from 2019-01-01 to 2020-12-31 with catch-up; at most 4 runs at once. `ingest_transactions` (Bronze; 3 retries, 5 minutes apart) → `silver_transactions` (Silver for the same day; loads the PII key once per run).
-- DAG `bronze_reference_data`: manual trigger only; holidays, MCC, Census ZIP and Census ACS run in parallel (2 retries, 2 minutes apart), each followed by its Silver task (`silver_holidays`, `silver_census_zcta`, `silver_census_acs`, `silver_mcc`). `silver_mcc` was added to the DAG code on 2026-10-09 but has not run in Airflow yet (Silver MCC was built locally with the CLI function).
+- DAG `bronze_reference_data`: manual trigger only; holidays, MCC, Census ZIP and Census ACS run in parallel (2 retries, 2 minutes apart), each followed by its Silver task (`silver_holidays`, `silver_census_zcta`, `silver_census_acs`, `silver_mcc`). `silver_mcc` first ran in Airflow on 2026-10-19 (via the `only_new` clear; 981 rows, content identical to the local build of 2026-10-09).
+- Asset wiring: `silver_transactions` emits the Asset `silver_transactions`; the four reference Silver tasks emit `silver_reference`.
+- DAG `gold_dbt`: triggered when either Silver asset is updated (`AssetAny`), `max_active_runs=1`, no catch-up. One task runs `dbt build` (seeds, models, tests) with dbt from its own virtualenv in the image (`/opt/dbt-venv`), target `airflow`, build output in `/tmp/dbt-target` and logs in `/opt/airflow/logs/dbt` (never in the mounted `src/dbt`). Outcome by dbt exit code: 0 = success, soft-rule warnings logged as `SOFT RULE WARNING`; 1 = hard test or model error, `AirflowFailException`, no retry; anything else = dbt crash, 1 retry. Only an allow-list of environment variables reaches dbt, so Airflow's secrets do not. Emits the Asset `gold_star_schema` for later consumers.
+- End-to-end run on 2026-10-19: `silver_mcc` → 1 `silver_reference` event → 1 `gold_dbt` run (asset-triggered, first try, 30 s), dbt 66/66 on target `airflow`. `fraud.duckdb`: 1,852,394 fact rows, 9,651 fraud, dims 999 / 700 / 985 / 731, 52,496 rows on a public holiday in state, distance 0 nulls (max 152.117 km). `fraud_dev.duckdb` and `src/dbt/target` untouched; the other 7 reference tasks not re-run.
 - Silver tasks: 1 retry (1 minute) for transient problems; a `SilverValidationError` is converted to `AirflowFailException` (`airflow.sdk.exceptions`) and fails at once.
 - Full Bronze backfill completed: 731 daily runs, all successful, row counts verified against raw.
 - Historical Silver built on 2026-10-02 inside Airflow (REST clear with `only_new`, see Key decisions): 731 transaction runs + the reference run, every task successful on its first try, Bronze byte-identical before and after. Verified:
   - transactions: 731 partitions, 1,852,394 rows, 9,651 fraud, 0 days where Silver rows ≠ Bronze rows, 999 distinct `card_hash` = 999 distinct Bronze `cc_num`, every `card_hash` 64 hex characters, every `zip` 5 digits, 0 duplicate `trans_num`, 1 schema across all partitions and equal to `SILVER_SCHEMA`, 2020-02-29 = 0 rows with the full schema;
   - Census ACS: 33,120 rows, 2,299 null `median_household_income`, 569 null `median_age`; Census Gazetteer: 33,144 rows; holidays: 160 rows (2019 + 2020);
   - `PII_HASH_KEY` and `CENSUS_API_KEY`: in 0 of 1,477 Airflow log files, 0 lines of container output, 0 of 735 Silver files.
-- Memory while running: about 1.1 GB total for Bronze, about 1.2 GB for Silver (scheduler about 920 MiB), well under the per-container limits (5.5 GB in total).
+- Memory while running: about 1.1 GB total for Bronze, about 1.2 GB for Silver (scheduler about 920 MiB), peak 2.1 GB for Gold (scheduler 1,584 MiB of its 2,560 MiB limit while dbt runs, with DuckDB capped at 1 GB), well under the per-container limits (5.5 GB in total).
 
 ---
 
@@ -129,6 +134,13 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 | Holidays collapsed to one row per date and state before joining | One state can have two holiday records on the same day, so a direct join would duplicate 948 transactions. Only `Public` and `Bank` types count as days off; the fact gets `is_public_holiday_in_state`. |
 | Merchant coordinates stay on the fact, customer coordinates stay in Silver | The simulator draws a new merchant point per transaction (up to 6,262 per merchant); Gold exposes `distance_km`, never the customer coordinates. |
 | Category → MCC as a 14-row dbt seed with a separate `channel` column | One rule for all rows (the MCC describes what is sold); `channel` (in_person / online / unknown) keeps the split an MCC cannot express. 11 distinct codes, so the seed key is `category`; MCC descriptions are joined from the reference table, never typed by hand. |
+| dbt-core 1.11.16 instead of 1.12.5, in a `.venv-dbt` on Python 3.12.10 (decided 2026-10-19) | dbt-core 1.12 requires `dbt-core-experimental-parser`, an alpha Rust parser published on PyPI only as a 4.8 KB build script that downloads a prebuilt binary from GitHub releases at install time (SHA-256 checked). 1.11.x does not require it, so every package comes from PyPI as a normal wheel. 1.11 supports and tests Python 3.10–3.13, not 3.14, so `.venv-dbt` was rebuilt on Python 3.12.10 (installed per user from python.org, signature and MD5 verified; PATH and the default `py` 3.14 unchanged). The local dbt now matches the Docker image (Python 3.12) exactly. |
+| Full lock file `requirements-dbt.lock` for the image's dbt venv | 55 packages pinned, resolved for Linux x86_64 / Python 3.12 with `pip --dry-run --report --platform … --only-binary=:all:`, so image rebuilds are reproducible. It is identical to the Windows `.venv-dbt` (same 55 packages and versions). |
+| `date_key` is the readable integer YYYYMMDD | The usual convention for dates and readable in queries; the exception to the md5-of-natural-key rule used for the other surrogate keys. |
+| Quality rules split into hard and soft | Hard rules (`assert_gold_hard_rules`) fail the build (e.g. non-positive amounts, distance outside 0–200 km, merchant without MCC). Soft rules (`assert_gold_soft_rules`, severity `warn`) only warn when something changed and a person should look (fraud rate outside 0.3–1%, no-income share outside 5–8%, days without transactions, and rows outside their `_batch_date`, since late arrivals are normal). |
+| Great Expectations evaluated and not used | dbt tests already cover every check in the design and the quality rules, run in the same `dbt build`; a second engine would add a heavy dependency and duplicate the checks. |
+| Two DuckDB files: `fraud.duckdb` (Airflow) and `fraud_dev.duckdb` (local) | DuckDB allows one writer per file, and its file lock is not reliable across the Windows/Docker bind mount; separate files make two writers impossible by construction. |
+| `gold_dbt` is asset-triggered, with dbt in its own venv in the image | Gold is rebuilt only when Silver changes, one run at a time; the separate venv keeps dbt out of Airflow's constraint-pinned packages (verified: Airflow's 136 packages identical before and after the rebuild). |
 | Expected card count is 999, not 1,000 | Measured, not assumed: 999 distinct `cc_num` in Bronze (983 in the train file plus cards that only appear in the test file). Checks use measured numbers, never round guesses. |
 
 ---
@@ -160,13 +172,14 @@ Phase 2 (Gold), steps 1–2 of 5 done; dbt not started:
 
 - [x] Profile the full Silver layer (`notebooks/02_star_schema_design.ipynb`) and write the star schema design (`docs/star_schema_design.md`)
 - [x] Design the category → MCC mapping (14 rows, 11 codes, `channel` column)
-- [x] Set up the Gold tooling (dbt-core 1.12.5 + dbt-duckdb 1.11.0 + duckdb 1.5.6 in `.venv-dbt`, project in `src/dbt`, DuckDB file `data/gold/fraud.duckdb`) and create the seed file from the mapping table
+- [x] Set up the Gold tooling (dbt-core 1.12.5, changed to 1.11.16 on 2026-10-19, + dbt-duckdb 1.11.0 + duckdb 1.5.6 in `.venv-dbt`, project in `src/dbt`, DuckDB file `data/gold/fraud.duckdb`) and create the seed file from the mapping table
 - [x] Silver MCC transform (author: `src/silver/mcc.py`, 18 tests), wired into the Silver writer and the reference DAG; `stg_mcc_codes` (981 codes) and the test that every seed `mcc` exists in it; `silver.mcc` source path narrowed to `mcc/*/part-0.parquet`
-- [ ] Next time Docker runs: full Airflow parse of the reference DAG and one run of `silver_mcc` (only checked locally so far: the DAG file compiles and the wiring is right)
-- [ ] Build `fact_transactions` and the four dimensions
-- [ ] Generate `dim_date` as a calendar (731 days), not from distinct transaction dates (that gives 730: no transactions on 2020-02-29)
-- [ ] Pass the design's checks: fact rows = Silver rows; `trans_num` unique; every foreign key finds exactly one dimension row; dim_card 999, dim_merchant 700, dim_location 985, dim_date 731; fraud total 9,651
-- [ ] Data quality with Great Expectations
+- [x] Full Airflow parse of the reference DAG and one run of `silver_mcc` in Airflow (2026-10-19)
+- [x] Build `fact_transactions` and the four dimensions (author)
+- [x] Generate `dim_date` as a calendar (731 days), not from distinct transaction dates (that gives 730: no transactions on 2020-02-29)
+- [x] Pass the design's checks: fact rows = Silver rows; `trans_num` unique; every foreign key finds exactly one dimension row; dim_card 999, dim_merchant 700, dim_location 985, dim_date 731; fraud total 9,651
+- [x] Data quality: hard and soft rules as dbt tests (author); Great Expectations evaluated and not used
+- [x] `gold_dbt` DAG: asset-triggered after Silver, dbt in its own venv in the image, verified end to end
 
 Phase 1 Silver layer (complete):
 
@@ -198,6 +211,10 @@ Phase 1 Silver layer (complete):
 - **.gitignore gap:** the original pattern missed partitioned sub-folders; fixed before any data was committed.
 - **Check join fan-out before choosing keys:** two plausible joins would have silently duplicated fact rows: a merchant dimension keyed on name alone (+35,242 rows) and a direct join to raw holiday rows (+948 rows). Profiling the keys first (693 names vs 700 merchants; two holiday records per state and day) caught both before any model was built.
 - **A dimension derived from the facts misses empty days:** distinct transaction dates give 730 days, the calendar has 731 (2020-02-29 has no transactions). Calendar dimensions are generated, not derived.
+- **A package can download code from outside PyPI at install time:** `dbt-core-experimental-parser` (required by dbt-core 1.12) is a build script that fetches a binary from GitHub releases. It went unnoticed in the first `.venv-dbt` install (2026-10-09) and was found on 2026-10-19 while building a lock file: pip refused to resolve it for another platform (no wheels on PyPI). Lesson: after an install, check every package's wheel generator (`*.dist-info/WHEEL`); anything other than a standard build tool needs a look.
+- **A soft rule must be proved able to fire:** a warning that never appears may mean "all good" or "the rule cannot fire". As a positive control, a temporary rule (distance over 100 km) flagged 432,669 rows (count re-checked in Gold on 2026-10-19), proving the rules can fire; the wrapper was also run against a throwaway dbt project with one failing hard test (task fails, no retry) and one firing soft test (task succeeds, warning logged).
+- **An interrupted command can still have an effect:** a `docker build` that was stopped in the terminal kept running in Docker's build engine (BuildKit), and the next build reused its result. Side effects of an interrupted command must be checked and reported.
+- **More silent check failures in Git Bash:** besides `grep -iF`, Git Bash rewrote container paths such as `/opt/dbt-venv/...` into Windows paths (fix: `MSYS_NO_PATHCONV=1`), `sha256sum` prints `*` before file names (it broke a before/after comparison), and a text sort ranked 974 above 2083 when looking for a peak. Each was caught because the result looked impossible or failed its positive control.
 - **A false "0" from Git Bash grep:** in Git Bash, `grep` aborts when `-i` and `-F` are combined and prints nothing. In `$(grep -ciF …)` that showed as an empty count, and piped into `wc -l` it showed as `0`, which looked like "secret not found". Fixed by counting in Python (or with Linux `grep` inside the container). Lesson: a zero can mean "nothing found" or "the check never ran", so every zero-count check now has a positive control that must succeed (e.g. a known ZIP must be found in the Silver values) before a zero is trusted.
 
 ---
@@ -207,7 +224,8 @@ Phase 1 Silver layer (complete):
 - Windows 11, 32 GB RAM, PyCharm, Docker Desktop.
 - Python 3.14.6 in `.venv`; pandas 3.0.5, pyarrow 25.0.1, requests 2.34.2, python-dotenv 1.2.3.
 - The Airflow Docker image uses Python 3.12 with the same package versions. 3.12 was chosen as a mature, widely supported version for Airflow; images for 3.13 and 3.14 also exist.
-- Dev tools: ipykernel, nbconvert, pytest. The test suite (172 tests) passed at the last run. dbt runs from `src/dbt` with `.venv-dbt`.
+- Dev tools: ipykernel, nbconvert, pytest. The test suite (183 tests) passed at the last run. dbt runs from `src/dbt` with `.venv-dbt` (Python 3.12.10; dbt-core 1.11.16, dbt-duckdb 1.11.0, duckdb 1.5.6). Python 3.12 is installed per user next to 3.14 and is used only for `.venv-dbt`; 3.14 stays the default `python` and `py`.
+- Airflow image `fraud-airflow:3.3.2` (1.83 GB): Airflow 3.3.2 plus `/opt/dbt-venv` (Python 3.12.14, installed from `requirements-dbt.lock`, 55 packages, glibc 2.36). The previous image is kept as `fraud-airflow:3.3.2-before-dbt` for rollback.
 
 ---
 
@@ -228,6 +246,12 @@ docker compose down
 
 Never add `-v` to that command: it deletes the Airflow volumes.
 
+Local dbt (writes `data/gold/fraud_dev.duckdb`, never `fraud.duckdb`), from `src/dbt`:
+
+```
+..\..\.venv-dbt\Scripts\dbt build
+```
+
 ---
 
 ## 13. Session log
@@ -246,6 +270,7 @@ Never add `-v` to that command: it deletes the Airflow volumes.
 | 2026-10-09 | Phase 2 step 2 (author, commit `13093ed`): category → MCC mapping designed as a 14-row seed (11 distinct codes) with a separate `channel` column. Status file updated. |
 | 2026-10-09 | Phase 2 step 3, dbt scaffolding: separate `.venv-dbt` (Python 3.14.6; dbt-core 1.12.5, dbt-duckdb 1.11.0, duckdb 1.5.6), `dbt debug` passed without setting `DATA_DIR`. Project in `src/dbt` (run from that folder): Silver sources read with `hive_partitioning = false` (no duplicate date column), 4 staging views (select only), 14-row seed verbatim from the design, all design checks as tests (`_marts.yml`, 1 custom generic + 3 singular tests; they activate once the author's models exist; `dim_date` column named `calendar_date`). `dbt seed` + `dbt build --select staging`: 14/14 passed; rows 1,852,394 / 33,120 / 33,144 / 160, seed 14. Staging views store relative paths, so outside dbt only the mart tables are queried. |
 | 2026-10-09 | Silver MCC: transform `src/silver/mcc.py` with 18 tests (author); wired into `silver_jobs.py` (`run_mcc`, version taken from the `version=<hash>` folder name) with 5 pipeline tests, and added to the reference DAG as `silver_mcc` (code only; Docker not started). Built locally once: 981 rows, 981 distinct codes, 3 with a leading zero, schema `mcc`, `description`, `_ingested_at`, `_source`, `_content_sha256`, `_version`. dbt: `stg_mcc_codes` (981 rows) with unique/not_null tests, seed test that every `mcc` exists in it (14 of 14 rows, 11 of 11 codes found), `silver.mcc` path narrowed. `dbt build --select staging category_mcc_map`: 25/25 passed. Full pytest suite: 172 passed. |
+| 2026-10-19 | Gold models (author): four dimensions, `int_state_public_holidays`, `fact_transactions` (commit `2eb1a93`), design doc updated with results (`161b3b4`), hard and soft quality rules (`cb91913`; batch-date rule moved to soft in `50e30d4`, `75e9290`); 64/64 + 2/2 locally. Gold orchestration: dbt targets `dev` / `airflow` (two DuckDB files), dbt wrapper `src/pipeline/gold_dbt.py` with 11 tests, asset-triggered `gold_dbt` DAG, Asset outlets on the Silver tasks. dbt-core changed to 1.11.16 (1.12 downloads a parser binary from GitHub at install), `.venv-dbt` rebuilt on Python 3.12.10, full lock `requirements-dbt.lock` (55 packages). Image rebuilt (1.83 GB, Airflow packages unchanged). End to end: `silver_mcc` (first Airflow run) → asset → `gold_dbt` 66/66; fact 1,852,394 rows, fraud 9,651; secrets in 0 of 1,483 log files; peak memory 2.1 GB. Full pytest suite: 183 passed. Great Expectations evaluated, not used. **Phase 2 complete.** |
 
 ---
 
