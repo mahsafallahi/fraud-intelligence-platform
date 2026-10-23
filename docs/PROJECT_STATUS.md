@@ -1,7 +1,7 @@
 # Fraud Intelligence Platform — Project Status
 
-**Last updated:** 2026-10-19
-**Current step:** Phase 2 complete (Gold star schema built and tested in dbt, orchestrated by the asset-triggered `gold_dbt` DAG). Next: Phase 3, exploratory analysis and hypothesis testing.
+**Last updated:** 2026-10-23
+**Current step:** Phase 3 complete (EDA and hypothesis tests; findings in `docs/eda_findings.md`). Next: Phase 4, fraud models.
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
 
@@ -19,8 +19,8 @@ An end-to-end financial fraud detection platform that demonstrates both **Data E
 |---|---|---|---|
 | 1 | Ingestion, Bronze and Silver layers, Airflow | Data Engineering | ✅ Complete: Bronze ✅, Silver ✅, Airflow ✅ (transactions, holidays, Census ACS, Census Gazetteer) |
 | 2 | Star-schema warehouse (dbt) and data quality (Great Expectations) | Data Engineering | ✅ Complete: star schema design ✅, category → MCC mapping ✅, dbt tooling ✅, Gold models + quality rules ✅, `gold_dbt` DAG ✅ (Great Expectations evaluated, not used: dbt tests cover every check) |
-| 3 | Exploratory analysis and hypothesis testing | Data Science | ⬜ Not started |
-| 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | ⬜ Not started |
+| 3 | Exploratory analysis and hypothesis testing | Data Science | ✅ Complete (2026-10-23): `notebooks/03_eda.ipynb`, findings in `docs/eda_findings.md` |
+| 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | ⏭️ Next |
 | 5 | Causal inference on fraud risk drivers | Data Science | ⬜ Not started |
 | 6 | FastAPI service, Docker, CI/CD | MLOps | ⬜ Not started |
 | 7 | RAG over AML regulations and an agentic decision layer | GenAI | ⬜ Not started |
@@ -141,6 +141,13 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 | Great Expectations evaluated and not used | dbt tests already cover every check in the design and the quality rules, run in the same `dbt build`; a second engine would add a heavy dependency and duplicate the checks. |
 | Two DuckDB files: `fraud.duckdb` (Airflow) and `fraud_dev.duckdb` (local) | DuckDB allows one writer per file, and its file lock is not reliable across the Windows/Docker bind mount; separate files make two writers impossible by construction. |
 | `gold_dbt` is asset-triggered, with dbt in its own venv in the image | Gold is rebuilt only when Silver changes, one run at a time; the separate venv keeps dbt out of Airflow's constraint-pinned packages (verified: Airflow's 136 packages identical before and after the rebuild). |
+| Notebooks query `fraud_dev.duckdb` read-only and close the connection after each query | Local dbt (target `dev`) writes `fraud_dev.duckdb`, and DuckDB allows one writer per file, so a notebook connection left open would block the next local `dbt build`. A read-only `with duckdb.connect(..., read_only=True)` per query can never write the file and releases it right away. `fraud.duckdb` stays Airflow's. |
+| Runtime vs dev dependencies | `duckdb` 1.5.6 is in `requirements.txt` (runtime: the API and dashboard will read Gold); `matplotlib` 3.11.2, `scipy` 1.18.1 and `statsmodels` 0.15.0 are in `requirements-dev.txt` (analysis only), so they stay out of the Airflow image. |
+| Hypothesis tests: single-predictor logistic regression, cluster-robust standard errors, Holm correction | Transactions of the same card (or, for holidays, the same day) are not independent, so standard errors are clustered by card (by day for holidays); Holm corrects for running 7 tests. The tests use the same data the hypotheses came from, so the real confirmation is the Phase 4 model on an untouched test period. |
+| Phase 4 leakage rules | Time-based train / validation / test split with a 7-day gap (fraud episodes last at most 2.89 days); no random split (an episode would land in both train and test); per-card features from earlier transactions only; no features built from past labels (chargebacks arrive weeks later). |
+| Phase 4 baseline rule: night (22–03) and amount above $136.33 | Flags 2.6% of transactions with recall 64.6% and precision 12.7%; any model must beat this simple rule to be worth deploying. |
+| Gender excluded from the model, used only for a fairness audit | Male vs female differs only slightly (odds ratio 1.18); using it as a feature would risk unequal treatment, so it is kept to check whether errors fall equally on both groups. |
+| Model run with and without card-history-length features | Cards that first appear mid-period start with fraud 97% of the time, a simulator artifact; running both versions shows how much of the result depends on it. |
 | Expected card count is 999, not 1,000 | Measured, not assumed: 999 distinct `cc_num` in Bronze (983 in the train file plus cards that only appear in the test file). Checks use measured numbers, never round guesses. |
 
 ---
@@ -159,6 +166,7 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 - No transactions on 2020-02-29 (the generator skipped the leap day).
 - Fraud amounts are higher (median about $397 vs $47) but capped around $1,376, so a single amount threshold does not work.
 - Fraud rate is below 1%: accuracy is not a useful metric; use precision, recall and PR-AUC.
+- Phase 3 EDA findings (amount, time of day, category and channel, per-card behaviour, card lifecycle, no signal from location, Census or holidays) are in `docs/eda_findings.md`.
 - 999 distinct cards in total (983 in the train file); the same 999 appear as distinct `card_hash` values in Silver.
 - 693 distinct merchant names but 700 merchants (name + category): 7 names appear in two unrelated categories. Every one of the 14 categories has exactly 50 merchants.
 - 57 of the 985 transaction ZIPs have no median household income; missingness is not random (39% of them have under 100 residents, versus 1.6% of the others). 12 ZIPs have no median age and 8 have zero population.
@@ -222,9 +230,9 @@ Phase 1 Silver layer (complete):
 ## 11. Environment
 
 - Windows 11, 32 GB RAM, PyCharm, Docker Desktop.
-- Python 3.14.6 in `.venv`; pandas 3.0.5, pyarrow 25.0.1, requests 2.34.2, python-dotenv 1.2.3.
+- Python 3.14.6 in `.venv`; pandas 3.0.5, pyarrow 25.0.1, requests 2.34.2, python-dotenv 1.2.3, duckdb 1.5.6.
 - The Airflow Docker image uses Python 3.12 with the same package versions. 3.12 was chosen as a mature, widely supported version for Airflow; images for 3.13 and 3.14 also exist.
-- Dev tools: ipykernel, nbconvert, pytest. The test suite (183 tests) passed at the last run. dbt runs from `src/dbt` with `.venv-dbt` (Python 3.12.10; dbt-core 1.11.16, dbt-duckdb 1.11.0, duckdb 1.5.6). Python 3.12 is installed per user next to 3.14 and is used only for `.venv-dbt`; 3.14 stays the default `python` and `py`.
+- Dev tools: ipykernel, nbconvert, pytest, matplotlib 3.11.2, scipy 1.18.1, statsmodels 0.15.0. The test suite (183 tests) passed at the last run. dbt runs from `src/dbt` with `.venv-dbt` (Python 3.12.10; dbt-core 1.11.16, dbt-duckdb 1.11.0, duckdb 1.5.6). Python 3.12 is installed per user next to 3.14 and is used only for `.venv-dbt`; 3.14 stays the default `python` and `py`.
 - Airflow image `fraud-airflow:3.3.2` (1.83 GB): Airflow 3.3.2 plus `/opt/dbt-venv` (Python 3.12.14, installed from `requirements-dbt.lock`, 55 packages, glibc 2.36). The previous image is kept as `fraud-airflow:3.3.2-before-dbt` for rollback.
 
 ---
@@ -271,6 +279,10 @@ Local dbt (writes `data/gold/fraud_dev.duckdb`, never `fraud.duckdb`), from `src
 | 2026-10-09 | Phase 2 step 3, dbt scaffolding: separate `.venv-dbt` (Python 3.14.6; dbt-core 1.12.5, dbt-duckdb 1.11.0, duckdb 1.5.6), `dbt debug` passed without setting `DATA_DIR`. Project in `src/dbt` (run from that folder): Silver sources read with `hive_partitioning = false` (no duplicate date column), 4 staging views (select only), 14-row seed verbatim from the design, all design checks as tests (`_marts.yml`, 1 custom generic + 3 singular tests; they activate once the author's models exist; `dim_date` column named `calendar_date`). `dbt seed` + `dbt build --select staging`: 14/14 passed; rows 1,852,394 / 33,120 / 33,144 / 160, seed 14. Staging views store relative paths, so outside dbt only the mart tables are queried. |
 | 2026-10-09 | Silver MCC: transform `src/silver/mcc.py` with 18 tests (author); wired into `silver_jobs.py` (`run_mcc`, version taken from the `version=<hash>` folder name) with 5 pipeline tests, and added to the reference DAG as `silver_mcc` (code only; Docker not started). Built locally once: 981 rows, 981 distinct codes, 3 with a leading zero, schema `mcc`, `description`, `_ingested_at`, `_source`, `_content_sha256`, `_version`. dbt: `stg_mcc_codes` (981 rows) with unique/not_null tests, seed test that every `mcc` exists in it (14 of 14 rows, 11 of 11 codes found), `silver.mcc` path narrowed. `dbt build --select staging category_mcc_map`: 25/25 passed. Full pytest suite: 172 passed. |
 | 2026-10-19 | Gold models (author): four dimensions, `int_state_public_holidays`, `fact_transactions` (commit `2eb1a93`), design doc updated with results (`161b3b4`), hard and soft quality rules (`cb91913`; batch-date rule moved to soft in `50e30d4`, `75e9290`); 64/64 + 2/2 locally. Gold orchestration: dbt targets `dev` / `airflow` (two DuckDB files), dbt wrapper `src/pipeline/gold_dbt.py` with 11 tests, asset-triggered `gold_dbt` DAG, Asset outlets on the Silver tasks. dbt-core changed to 1.11.16 (1.12 downloads a parser binary from GitHub at install), `.venv-dbt` rebuilt on Python 3.12.10, full lock `requirements-dbt.lock` (55 packages). Image rebuilt (1.83 GB, Airflow packages unchanged). End to end: `silver_mcc` (first Airflow run) → asset → `gold_dbt` 66/66; fact 1,852,394 rows, fraud 9,651; secrets in 0 of 1,483 log files; peak memory 2.1 GB. Full pytest suite: 183 passed. Great Expectations evaluated, not used. **Phase 2 complete.** |
+| 2026-10-19 (evening) | Phase 3 started (author): `duckdb` 1.5.6 added to `.venv` and `requirements.txt`; `notebooks/03_eda.ipynb` created, reading `fraud_dev.duckdb` read-only; wide frame reconciled with Phase 2 (1,852,394 rows, 9,651 fraud, 52,496 holiday rows). Only `duckdb` was added that day. |
+| 2026-10-22 | No code. Job-market research and plan additions only: probability calibration in Phase 4, the train/validation/test split, a "How I worked with AI" README section planned for Phase 8, follow-up projects after Phase 4. |
+| 2026-10-23 (00:15–01:15) | EDA (author): `matplotlib`, `scipy` and `statsmodels` added to `requirements-dev.txt`; amount, hour and day-of-week, night × amount, category × channel, age and gender findings (commit `26a9a94`). |
+| 2026-10-23 (18:00–18:15) | EDA (author): location and Census, holidays, per-card behaviour, leakage rules (commit `648c5b2`); hypothesis tests and `docs/eda_findings.md` (commit `2ad4413`). **Phase 3 complete.** |
 
 ---
 
