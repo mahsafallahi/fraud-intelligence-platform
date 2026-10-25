@@ -29,6 +29,11 @@ src/dbt/dbt_packages/
 src/dbt/logs/
 src/dbt/.user.yml
 
+# MLflow (experiment runs and saved models are reproducible outputs, not code)
+mlruns/
+mlartifacts/
+mlflow.db
+
 # IDE
 .vscode/
 .idea/
