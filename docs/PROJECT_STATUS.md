@@ -1,7 +1,7 @@
 # Fraud Intelligence Platform — Project Status
 
-**Last updated:** 2026-10-23
-**Current step:** Phase 3 complete (EDA and hypothesis tests; findings in `docs/eda_findings.md`). Next: Phase 4, fraud models.
+**Last updated:** 2026-10-31
+**Current step:** Phase 4 (fraud models) in progress: steps 1–6 and 11 done, step 7 half done. Final model chosen: variant F (LightGBM, no class weights, no card history, coarse profile). Next: move F's features into `src/models` (with tests), log E and F to MLflow, local SHAP explanations, calibration, money-based threshold, fairness audit, XGBoost check, `docs/model_results.md`, then open the test period once.
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
 
@@ -20,7 +20,7 @@ An end-to-end financial fraud detection platform that demonstrates both **Data E
 | 1 | Ingestion, Bronze and Silver layers, Airflow | Data Engineering | ✅ Complete: Bronze ✅, Silver ✅, Airflow ✅ (transactions, holidays, Census ACS, Census Gazetteer) |
 | 2 | Star-schema warehouse (dbt) and data quality (Great Expectations) | Data Engineering | ✅ Complete: star schema design ✅, category → MCC mapping ✅, dbt tooling ✅, Gold models + quality rules ✅, `gold_dbt` DAG ✅ (Great Expectations evaluated, not used: dbt tests cover every check) |
 | 3 | Exploratory analysis and hypothesis testing | Data Science | ✅ Complete (2026-10-23): `notebooks/03_eda.ipynb`, findings in `docs/eda_findings.md` |
-| 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | ⏭️ Next |
+| 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | 🔄 In progress: steps 1–6 and 11 done, step 7 half done; final model = variant F |
 | 5 | Causal inference on fraud risk drivers | Data Science | ⬜ Not started |
 | 6 | FastAPI service, Docker, CI/CD | MLOps | ⬜ Not started |
 | 7 | RAG over AML regulations and an agentic decision layer | GenAI | ⬜ Not started |
@@ -148,6 +148,10 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 | Phase 4 baseline rule: night (22–03) and amount above $136.33 | Flags 2.6% of transactions with recall 64.6% and precision 12.7%; any model must beat this simple rule to be worth deploying. |
 | Gender excluded from the model, used only for a fairness audit | Male vs female differs only slightly (odds ratio 1.18); using it as a feature would risk unequal treatment, so it is kept to check whether errors fall equally on both groups. |
 | Model run with and without card-history-length features | Cards that first appear mid-period start with fraud 97% of the time, a simulator artifact; running both versions shows how much of the result depends on it. |
+| Models compared at a fixed alert workload, with a card-level bootstrap | A fraud team can review only so many alerts, so models are compared at the same number of alerts (on validation: 5,832, the baseline rule's workload) on recall, fraud-dollar recall and PR-AUC; paired bootstrap resampling by card gives confidence intervals for the differences. |
+| LightGBM, hyperparameters tuned on an inner time split inside the training period; logistic regression as baseline | Tuning never sees the validation period, so validation stays an honest estimate; the logistic baseline shows what a simple model achieves. |
+| Experiment tracking with local MLflow (SQLite, git commit tags) | Every run records its parameters, metrics and the code version; MLflow files are git-ignored because they are reproducible outputs, not code. |
+| Final model: variant F (no class weights, no card history, coarse profile) | Variant F replaced A for three reasons: statistically equal performance (paired card bootstrap), no card-fingerprint risk (exact `birth_year` + `city_pop` + income was unique for all 999 cards, while the coarse profile, a 10-year age band + urban flag, has only 18 groups), and less personal data. |
 | Expected card count is 999, not 1,000 | Measured, not assumed: 999 distinct `cc_num` in Bronze (983 in the train file plus cards that only appear in the test file). Checks use measured numbers, never round guesses. |
 
 ---
@@ -176,7 +180,19 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 
 ## 9. To-do
 
-Phase 2 (Gold), steps 1–2 of 5 done; dbt not started:
+Phase 4 (fraud models), steps 1–6 and 11 done, step 7 half done. Next:
+
+- [ ] Move variant F's features into `src/models` (with tests)
+- [ ] Log variants E and F to MLflow
+- [ ] Local SHAP explanations
+- [ ] Probability calibration
+- [ ] Money-based alert threshold
+- [ ] Fairness audit (gender)
+- [ ] XGBoost check
+- [ ] `docs/model_results.md`
+- [ ] Open the test period once, at the end
+
+Phase 2 (Gold), complete:
 
 - [x] Profile the full Silver layer (`notebooks/02_star_schema_design.ipynb`) and write the star schema design (`docs/star_schema_design.md`)
 - [x] Design the category → MCC mapping (14 rows, 11 codes, `channel` column)
@@ -232,7 +248,7 @@ Phase 1 Silver layer (complete):
 - Windows 11, 32 GB RAM, PyCharm, Docker Desktop.
 - Python 3.14.6 in `.venv`; pandas 3.0.5, pyarrow 25.0.1, requests 2.34.2, python-dotenv 1.2.3, duckdb 1.5.6.
 - The Airflow Docker image uses Python 3.12 with the same package versions. 3.12 was chosen as a mature, widely supported version for Airflow; images for 3.13 and 3.14 also exist.
-- Dev tools: ipykernel, nbconvert, pytest, matplotlib 3.11.2, scipy 1.18.1, statsmodels 0.15.0. The test suite (183 tests) passed at the last run. dbt runs from `src/dbt` with `.venv-dbt` (Python 3.12.10; dbt-core 1.11.16, dbt-duckdb 1.11.0, duckdb 1.5.6). Python 3.12 is installed per user next to 3.14 and is used only for `.venv-dbt`; 3.14 stays the default `python` and `py`.
+- Dev tools: ipykernel, nbconvert, pytest, matplotlib 3.11.2, scipy 1.18.1, statsmodels 0.15.0; for Phase 4: scikit-learn 1.9.1, lightgbm 4.7.0, xgboost 3.4.1, shap 0.54.1, mlflow 3.17.2 (the chosen model's libraries move to `requirements.txt` in Phase 6). The test suite (233 tests) passed at the last run. dbt runs from `src/dbt` with `.venv-dbt` (Python 3.12.10; dbt-core 1.11.16, dbt-duckdb 1.11.0, duckdb 1.5.6). Python 3.12 is installed per user next to 3.14 and is used only for `.venv-dbt`; 3.14 stays the default `python` and `py`.
 - Airflow image `fraud-airflow:3.3.2` (1.83 GB): Airflow 3.3.2 plus `/opt/dbt-venv` (Python 3.12.14, installed from `requirements-dbt.lock`, 55 packages, glibc 2.36). The previous image is kept as `fraud-airflow:3.3.2-before-dbt` for rollback.
 
 ---
@@ -283,6 +299,10 @@ Local dbt (writes `data/gold/fraud_dev.duckdb`, never `fraud.duckdb`), from `src
 | 2026-10-22 | No code. Job-market research and plan additions only: probability calibration in Phase 4, the train/validation/test split, a "How I worked with AI" README section planned for Phase 8, follow-up projects after Phase 4. |
 | 2026-10-23 (00:15–01:15) | EDA (author): `matplotlib`, `scipy` and `statsmodels` added to `requirements-dev.txt`; amount, hour and day-of-week, night × amount, category × channel, age and gender findings (commit `26a9a94`). |
 | 2026-10-23 (18:00–18:15) | EDA (author): location and Census, holidays, per-card behaviour, leakage rules (commit `648c5b2`); hypothesis tests and `docs/eda_findings.md` (commit `2ad4413`). **Phase 3 complete.** |
+| 2026-10-23 (evening) | Phase 4 started (author): time-based split, features; 213 tests. |
+| 2026-10-25 | `src/models/evaluate.py` with 12 tests (author): PR-AUC, top-N alerts, alert metrics with fraud dollars, card-level bootstrap. Validation at 5,832 alerts (the baseline rule's workload): rule recall 64.3%, dollar recall 83.8%; logistic regression recall 68.6%, dollar recall 90.6%, PR-AUC 0.429; all paired card-bootstrap differences real. MLflow files ignored in `.gitignore`. Commits `d4f8044`, `e36d77c`. |
+| 2026-10-26 | `src/models/train.py` with 8 tests (author): LightGBM with hyperparameters tuned on an inner time split inside the training period, logistic baseline. Four variants (class weights on/off × card history on/off): validation PR-AUC 0.913–0.920. Commit `d049d5f`. |
+| 2026-10-31 | The four variants are statistically indistinguishable (paired card bootstrap). With 1,000 alerts (about 12 per day) the model catches 85% of fraud cases and 94% of fraud dollars on validation. Six runs logged to local MLflow (SQLite, git commit tags). SHAP and ablation: exact age, city population and income could fingerprint every card, but a coarse profile (10-year age band + urban flag, 18 groups) keeps all the performance, so the final model is variant F (no class weights, no card history, coarse profile). Commits `38b50ff`, `fdc5d37`, `30fdc46`. 233 tests passing. |
 
 ---
 
