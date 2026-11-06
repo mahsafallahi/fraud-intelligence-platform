@@ -4,7 +4,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.models.features import CATEGORIES, FEATURE_COLUMNS, build_features
+from src.models.features import (
+    CATEGORIES,
+    COARSE_PROFILE_FEATURES,
+    FEATURE_COLUMNS,
+    OUTPUT_COLUMNS,
+    build_features,
+)
 
 
 def make_frame(rows, index=None):
@@ -31,7 +37,7 @@ def test_output_columns_and_original_order():
     )
     result = build_features(frame)
     assert list(result.index) == [7, 3, 5]
-    assert list(result.columns) == FEATURE_COLUMNS
+    assert list(result.columns) == OUTPUT_COLUMNS
 
 
 def test_secs_since_prev_stays_within_each_card():
@@ -127,6 +133,33 @@ def test_age_uses_transaction_year():
     assert list(build_features(frame)["age"]) == [39, 40]
 
 
+def test_age_band_boundaries_and_exact_age_is_kept():
+    frame = make_frame([
+        {"card_key": "A", "trans_ts": "2019-03-01 10:00", "amt": 1.0},
+        {"card_key": "A", "trans_ts": "2020-03-01 10:00", "amt": 1.0},
+    ])
+    result = build_features(frame)
+    assert list(result["age_band"]) == [30, 40]
+    assert list(result["age"]) == [39, 40]
+
+
+def test_urban_boundary_and_exact_city_pop_is_kept():
+    frame = make_frame([
+        {"card_key": "A", "trans_ts": "2020-01-01 10:00", "amt": 1.0, "city_pop": 49_999},
+        {"card_key": "A", "trans_ts": "2020-01-01 11:00", "amt": 1.0, "city_pop": 50_000},
+    ])
+    result = build_features(frame)
+    assert list(result["urban"]) == [0, 1]  # int8 flag, as in the notebook
+    assert result["urban"].dtype == "int8"
+    assert list(result["city_pop"]) == [49_999, 50_000]
+
+
+def test_feature_columns_stay_the_variant_a_to_e_columns():
+    assert len(FEATURE_COLUMNS) == 19
+    assert not set(COARSE_PROFILE_FEATURES) & set(FEATURE_COLUMNS)
+    assert OUTPUT_COLUMNS == FEATURE_COLUMNS + COARSE_PROFILE_FEATURES
+
+
 def test_flags_and_missing_income_stay_missing():
     frame = make_frame([
         {"card_key": "A", "trans_ts": "2020-01-01 10:00", "amt": 1.0,
@@ -168,6 +201,7 @@ def test_future_rows_do_not_change_past_features():
 
     full = build_features(frame).loc[past.index]
     truncated = build_features(past)
+    assert set(COARSE_PROFILE_FEATURES) <= set(full.columns)
     pd.testing.assert_frame_equal(full, truncated)
 
     # Positive control: a card-wide mean (uses the future) DOES change.
@@ -181,6 +215,15 @@ def test_missing_column_fails_loudly():
         {"card_key": "A", "trans_ts": "2020-01-01 10:00", "amt": 1.0},
     ]).drop(columns="distance_km")
     with pytest.raises(ValueError, match="missing columns"):
+        build_features(frame)
+
+
+@pytest.mark.parametrize("column", ["birth_year", "city_pop"])
+def test_missing_coarse_profile_input_fails_loudly(column):
+    frame = make_frame([
+        {"card_key": "A", "trans_ts": "2020-01-01 10:00", "amt": 1.0, column: None},
+    ])
+    with pytest.raises(ValueError, match=f"missing values in {column}"):
         build_features(frame)
 
 

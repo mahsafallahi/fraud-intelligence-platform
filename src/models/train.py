@@ -17,6 +17,9 @@ Design (decided 2026-10-25):
 - Logistic regression baseline: log of skewed features, median imputation with
   missing-value indicators, scaling and one-hot categories, all fitted on the
   training rows only.
+- Final model: variant F (no class weights, no card history, coarse profile).
+  FINAL_COLUMNS is the single source of truth for its 16 columns, in the same
+  order as cols_f in notebooks/04_modelling.ipynb.
 """
 
 import itertools
@@ -51,6 +54,13 @@ BASE_PARAMS = {
 }
 PARAM_GRID = {"num_leaves": [15, 63], "min_child_samples": [50, 500]}
 EARLY_STOPPING_ROUNDS = 100
+
+FINAL_COLUMNS = [
+    "amt", "hour", "is_night", "day_of_week", "category", "channel",
+    "secs_since_prev", "amt_vs_card_median", "card_txn_1h", "card_txn_24h",
+    "distance_km", "is_public_holiday_in_state", "is_nationwide_public_holiday",
+    "is_bank_holiday", "age_band", "urban",
+]
 
 
 def model_columns(with_card_history: bool) -> list:

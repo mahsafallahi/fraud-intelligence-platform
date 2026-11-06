@@ -4,9 +4,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.models.features import CARD_HISTORY_FEATURES, CATEGORIES, CHANNELS, FEATURE_COLUMNS
+from src.models.features import (
+    CARD_HISTORY_FEATURES,
+    CATEGORIES,
+    CHANNELS,
+    COARSE_PROFILE_FEATURES,
+    FEATURE_COLUMNS,
+    OUTPUT_COLUMNS,
+)
 from src.models.split import GAP_DAYS
 from src.models.train import (
+    FINAL_COLUMNS,
     INNER_TRAIN_END,
     INNER_VALID_START,
     PARAM_GRID,
@@ -42,6 +50,21 @@ def test_model_columns_with_and_without_card_history():
     without = model_columns(False)
     assert len(without) == len(FEATURE_COLUMNS) - len(CARD_HISTORY_FEATURES)
     assert not set(CARD_HISTORY_FEATURES) & set(without)
+
+
+def test_final_columns_are_the_16_columns_of_variant_f():
+    excluded = {"age", "city_pop", "median_household_income", "has_income",
+                "card_prev_txn_count"}
+    assert len(FINAL_COLUMNS) == 16
+    assert len(set(FINAL_COLUMNS)) == 16
+    assert not excluded & set(FINAL_COLUMNS)
+    assert set(FINAL_COLUMNS) <= set(OUTPUT_COLUMNS)
+
+
+def test_final_columns_match_cols_f_in_the_notebook():
+    customer = ["age", "city_pop", "median_household_income", "has_income"]
+    cols_e = [c for c in model_columns(False) if c not in customer]
+    assert FINAL_COLUMNS == cols_e + COARSE_PROFILE_FEATURES
 
 
 def test_inner_split_boundaries():

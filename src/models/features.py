@@ -16,6 +16,11 @@ Design (decided 2026-10-23, from the Phase 3 findings in docs/eda_findings.md):
 - No imputation here: missing values stay NaN. If a model needs imputation,
   it is fitted on the training period only, inside the model pipeline.
 - Fails loudly on missing columns, missing keys or unknown categories.
+- Coarse profile (final model F, from notebooks/04_modelling.ipynb): age_band and
+  urban replace the exact age and city_pop in the model, because the exact values
+  could fingerprint a card. The exact columns are still returned for the fairness
+  audit. FEATURE_COLUMNS stays the 19 columns of variants A-E, so those variants
+  keep their meaning; OUTPUT_COLUMNS is what build_features() returns.
 - Excluded on purpose: gender (fairness audit only), trans_num, card_key,
   merchant name, merchant coordinates, anything derived from labels.
 """
@@ -33,6 +38,8 @@ CHANNELS = ["in_person", "online", "unknown"]
 
 NIGHT_HOURS = [22, 23, 0, 1, 2, 3]
 MIN_PRIOR_FOR_MEDIAN = 5
+AGE_BAND_YEARS = 10
+URBAN_MIN_CITY_POP = 50_000
 
 CATEGORICAL_FEATURES = ["category", "channel"]
 CARD_HISTORY_FEATURES = ["card_prev_txn_count"]
@@ -43,6 +50,8 @@ FEATURE_COLUMNS = [
     "has_income", "distance_km", "is_public_holiday_in_state",
     "is_nationwide_public_holiday", "is_bank_holiday",
 ]
+COARSE_PROFILE_FEATURES = ["age_band", "urban"]
+OUTPUT_COLUMNS = FEATURE_COLUMNS + COARSE_PROFILE_FEATURES
 
 REQUIRED_COLUMNS = [
     "card_key", "trans_ts", "amt", "category", "channel", "birth_year",
@@ -103,13 +112,14 @@ def _first_of_tie_block(values, is_first) -> np.ndarray:
 
 
 def build_features(frame: pd.DataFrame) -> pd.DataFrame:
-    """Build model features; returns FEATURE_COLUMNS with the same index as frame."""
+    """Build model features; returns OUTPUT_COLUMNS with the same index as frame."""
     missing = [c for c in REQUIRED_COLUMNS if c not in frame.columns]
     if missing:
         raise ValueError(f"missing columns: {missing}")
     if not frame.index.is_unique:
         raise ValueError("frame index must be unique")
-    for col in ["card_key", "trans_ts", "amt", "birth_year"]:
+    # city_pop is here because a missing value would silently become urban = 0
+    for col in ["card_key", "trans_ts", "amt", "birth_year", "city_pop"]:
         if frame[col].isna().any():
             raise ValueError(f"missing values in {col}")
 
@@ -149,10 +159,12 @@ def build_features(frame: pd.DataFrame) -> pd.DataFrame:
 
     # Customer, location, holidays
     out["age"] = (s["trans_ts"].dt.year - s["birth_year"]).astype("int64")
+    out["age_band"] = (out["age"] // AGE_BAND_YEARS) * AGE_BAND_YEARS
     out["city_pop"] = s["city_pop"].astype("float64")
+    out["urban"] = (out["city_pop"] >= URBAN_MIN_CITY_POP).astype("int8")
     out["median_household_income"] = s["median_household_income"].astype("float64")
     out["distance_km"] = s["distance_km"].astype("float64")
     for col in FLAG_COLUMNS:
         out[col] = s[col].astype("int8")
 
-    return out.loc[frame.index, FEATURE_COLUMNS]
+    return out.loc[frame.index, OUTPUT_COLUMNS]
