@@ -1,7 +1,7 @@
 # Fraud Intelligence Platform — Project Status
 
 **Last updated:** 2026-10-31
-**Current step:** Phase 4 (fraud models) in progress: steps 1–6 and 11 done, step 7 half done. Final model chosen: variant F (LightGBM, no class weights, no card history, coarse profile). Next: move F's features into `src/models` (with tests), log E and F to MLflow, local SHAP explanations, calibration, money-based threshold, fairness audit, XGBoost check, `docs/model_results.md`, then open the test period once.
+**Current step:** Phase 4 (fraud models) in progress: variants A–F trained and compared on validation; final model F chosen (LightGBM, no class weights, no card history, coarse profile); F's features in `src/models` with tests; all eight runs in MLflow, reproducing exactly, F selected and A superseded; global and local SHAP explanations of F done. Next: calibration, money-based threshold, fairness audit, XGBoost check, `docs/model_results.md` (including the two limitations to measure), then open the test period once.
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
 
@@ -20,7 +20,7 @@ An end-to-end financial fraud detection platform that demonstrates both **Data E
 | 1 | Ingestion, Bronze and Silver layers, Airflow | Data Engineering | ✅ Complete: Bronze ✅, Silver ✅, Airflow ✅ (transactions, holidays, Census ACS, Census Gazetteer) |
 | 2 | Star-schema warehouse (dbt) and data quality (Great Expectations) | Data Engineering | ✅ Complete: star schema design ✅, category → MCC mapping ✅, dbt tooling ✅, Gold models + quality rules ✅, `gold_dbt` DAG ✅ (Great Expectations evaluated, not used: dbt tests cover every check) |
 | 3 | Exploratory analysis and hypothesis testing | Data Science | ✅ Complete (2026-10-23): `notebooks/03_eda.ipynb`, findings in `docs/eda_findings.md` |
-| 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | 🔄 In progress: steps 1–6 and 11 done, step 7 half done; final model = variant F |
+| 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | 🔄 In progress: variants A–F trained and compared; final model = variant F; features in `src/models`, all runs in MLflow, global and local SHAP done; calibration, threshold, fairness audit, XGBoost check, results write-up and test period still open |
 | 5 | Causal inference on fraud risk drivers | Data Science | ⬜ Not started |
 | 6 | FastAPI service, Docker, CI/CD | MLOps | ⬜ Not started |
 | 7 | RAG over AML regulations and an agentic decision layer | GenAI | ⬜ Not started |
@@ -180,17 +180,21 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 
 ## 9. To-do
 
-Phase 4 (fraud models), steps 1–6 and 11 done, step 7 half done. Next:
+Phase 4 (fraud models), in progress: variants A–F trained and compared on validation; final model F chosen; F's features in `src/models` with tests; all eight runs (rule, logistic, A–F) in MLflow, reproducing exactly, F selected and A superseded; global and local SHAP explanations of F done. Next:
 
-- [ ] Move variant F's features into `src/models` (with tests)
-- [ ] Log variants E and F to MLflow
-- [ ] Local SHAP explanations
+- [x] Move variant F's features into `src/models` (with tests)
+- [x] Log variants E and F to MLflow
+- [x] Local SHAP explanations
 - [ ] Probability calibration
 - [ ] Money-based alert threshold
 - [ ] Fairness audit (gender)
 - [ ] XGBoost check
 - [ ] `docs/model_results.md`
 - [ ] Open the test period once, at the end
+- [ ] The next time notebook 04 is changed and rerun: set `MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR=false` in cell 0, so MLflow's "Downloading artifacts" progress bars stay out of the outputs
+- [ ] Document two limitations of model F (in `docs/model_results.md`):
+  1. Hypothesis: the model relies on night-time patterns, so daytime fraud is ranked lower. So far this rests on one case, local case c (a $1,117 online purchase at 14:00, rank 1,198). Not yet measured: compare recall at the 1,000-alert budget for daytime vs night-time fraud on validation.
+  2. `hour` and `is_night` share importance, so their separate SHAP shares understate their joint effect. Not yet measured: check with the group SHAP of `hour` + `is_night`, as done for the profile features.
 
 Phase 2 (Gold), complete:
 
