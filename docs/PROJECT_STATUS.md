@@ -1,6 +1,6 @@
 # Fraud Intelligence Platform — Project Status
 
-**Last updated:** 2026-10-31
+**Last updated:** 2026-11-08
 **Current step:** Phase 4 (fraud models) in progress: variants A–F trained and compared on validation; final model F chosen (LightGBM, no class weights, no card history, coarse profile); F's features in `src/models` with tests; all eight runs in MLflow, reproducing exactly, F selected and A superseded; global and local SHAP explanations of F done. Next: calibration, money-based threshold, fairness audit, XGBoost check, `docs/model_results.md` (including the two limitations to measure), then open the test period once.
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
@@ -307,6 +307,7 @@ Local dbt (writes `data/gold/fraud_dev.duckdb`, never `fraud.duckdb`), from `src
 | 2026-10-25 | `src/models/evaluate.py` with 12 tests (author): PR-AUC, top-N alerts, alert metrics with fraud dollars, card-level bootstrap. Validation at 5,832 alerts (the baseline rule's workload): rule recall 64.3%, dollar recall 83.8%; logistic regression recall 68.6%, dollar recall 90.6%, PR-AUC 0.429; all paired card-bootstrap differences real. MLflow files ignored in `.gitignore`. Commits `d4f8044`, `e36d77c`. |
 | 2026-10-26 | `src/models/train.py` with 8 tests (author): LightGBM with hyperparameters tuned on an inner time split inside the training period, logistic baseline. Four variants (class weights on/off × card history on/off): validation PR-AUC 0.913–0.920. Commit `d049d5f`. |
 | 2026-10-31 | The four variants are statistically indistinguishable (paired card bootstrap). With 1,000 alerts (about 12 per day) the model catches 85% of fraud cases and 94% of fraud dollars on validation. Six runs logged to local MLflow (SQLite, git commit tags). SHAP and ablation: exact age, city population and income could fingerprint every card, but a coarse profile (10-year age band + urban flag, 18 groups) keeps all the performance, so the final model is variant F (no class weights, no card history, coarse profile). Commits `38b50ff`, `fdc5d37`, `30fdc46`. 233 tests passing. |
+| 2026-11-08 | Notebook 04 rerun end to end on .venv (15 min 48 s, exit 0); mlflow.db unchanged (SHA-256 identical); 74 values reconciled with worst difference 0; global SHAP of F (reconstruction error 1.9e-13), A vs F profile comparison (F keeps 76% of A's exact-profile weight), four local cases (first false alarm at rank 538); cell 23 progress bars stripped; two limitations of F recorded as hypotheses to measure; status wording changed from undefined step numbers to concrete progress. Commits 3525313, 2856014. |
 
 ---
 
