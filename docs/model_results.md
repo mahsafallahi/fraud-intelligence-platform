@@ -162,3 +162,50 @@ Exact TreeSHAP contributions from LightGBM, on all 228,187 validation rows, for 
 6. **In-sample calibrator.** The final calibrator was fitted on the same validation rows it is evaluated on; the test period is the honest check.
 
 ## 12. Test results
+
+The test period (2020-10-01 to 2020-12-31, 92 days) was opened once, on 2026-11-11, in MLflow run `test_evaluation` (cells 35–41). The evaluation was pre-registered in cell 35 and published on GitHub before any test row was loaded (commit `33212a1`). All models were evaluated exactly as logged, trained on the training period only; nothing was tuned, refit or changed after the results were seen.
+
+**The test period** (cell 37): 281,521 transactions, 936 fraud, 94 fraud cards; fraud rate 0.333%, lower than validation's 0.429%. Features were built on the full timeline; every non-test feature was identical to the one used before.
+
+**a. Thresholds from validation, applied unchanged** (cell 38):
+
+| Model | Alerts per day | Fraud caught | Recall | Dollar recall | Precision |
+|---|---|---|---|---|---|
+| Rule | 77.9 | 591 | 0.631 | 0.835 | 0.082 |
+| Logistic regression | 12.9 | 443 | 0.473 | 0.718 | 0.373 |
+| **F, by probability (primary)** | **10.5** | **800** | **0.855** | **0.936** | **0.826** |
+| F, by expected loss | 10.5 | 678 | 0.724 | 0.964 | 0.705 |
+
+**b. Fixed budget: 1,082 alerts in 92 days (11.8 per day)** (cell 38):
+
+| Model | Fraud caught | Recall | Dollars caught | Dollar recall | Precision | PR-AUC |
+|---|---|---|---|---|---|---|
+| Rule (its own 7,169 alerts) | 591 | 0.631 | $409,194 | 0.835 | 0.082 | 0.053 |
+| Logistic regression | 430 | 0.459 | $347,622 | 0.710 | 0.397 | 0.387 |
+| **F, by probability (primary)** | **828** | **0.885** | **$465,097** | **0.949** | **0.765** | **0.918** |
+| F, by expected loss | 698 | 0.746 | $478,393 | 0.977 | 0.645 | 0.755 |
+
+**Paired card bootstrap** (cell 38):
+
+| Comparison | Recall | Dollar recall | Precision |
+|---|---|---|---|
+| F minus logistic, 1,082 alerts | +0.425 (0.386 to 0.457) | +0.240 (0.207 to 0.279) | +0.368 (0.300 to 0.416) |
+| F minus rule, at the rule's 7,169 alerts | +0.354 (0.319 to 0.387) | +0.163 (0.135 to 0.194) | +0.046 (0.035 to 0.056) |
+| Expected loss minus probability, 1,082 alerts | −0.139 (−0.168 to −0.111) | **+0.027 (0.007 to 0.047)** | −0.120 (−0.141 to −0.099) |
+
+F's PR-AUC is 0.531 higher than the logistic regression's (0.490 to 0.573).
+
+**The primary claim holds.** Ranked by probability, F performs on the test period as on validation: PR-AUC 0.918 (validation 0.920), and at about 11.8 alerts per day it catches 88.5% of fraud cases and 94.9% of fraud dollars, with 76.5% of alerts being fraud. It clearly beats the rule and the logistic regression.
+
+**The ranking decision, revisited honestly.** On the test period the expected-loss ranking's dollar gain *is* confirmed out of sample: +0.027 dollar recall, interval 0.007 to 0.047 (in September it was not). It still costs 130 fraud cases (698 instead of 828) and 12 points of precision for $13,296 more fraud dollars. The decision made before the test (probability ranking primary, section 7) is not changed after seeing the test; a business that values dollars over cases and precision could choose expected loss, and this result is the evidence it would need.
+
+**d. Calibration** (cell 39): Brier 0.000722 raw vs 0.000718 calibrated; log loss 0.002990 vs 0.002978. Mean predicted fraud probability 0.352% (raw) and 0.346% (calibrated) vs 0.333% observed: an over-prediction of 6% and 4%, smaller than the drop in the base rate from validation (0.429%) would suggest. The reliability bins follow the diagonal.
+
+**e. Day vs night and fairness** (cell 40), 1,082 alerts, probability ranking:
+- **The daytime gap is confirmed on the test period:** recall 0.699 for daytime fraud vs 0.922 at night, a difference of 0.223 (interval 0.129 to 0.292). 780 of the 936 test fraud rows are at night. Under expected loss the gap is smaller (0.095, interval 0.025 to 0.173).
+- **The gender gap is confirmed on the test period:** recall 0.843 (0.774 to 0.900) for women vs 0.928 (0.882 to 0.955) for men; false-alarm rate 0.123% vs 0.051%. Under expected loss it remains (0.701 vs 0.792; false alarms 0.186% vs 0.077%).
+- By age band, recall ranges from 0.814 (ages 30–39) to 0.941 (ages 50–59) among groups with at least 10 fraud cards; false alarms are highest in ages 20–49 (0.109% to 0.124%). Ages 10–19 (1 fraud card), 70–79 (8), 80–89 (5) and 90–99 (no fraud) are too few to judge. Descriptive only.
+
+**f. Card level** (cell 40): every one of the 94 fraud cards received at least one alert from F under both settings, and also from the rule; the logistic regression reached 92 of 94. Fraud episodes contain several transactions, so this measure does not separate the models.
+
+**MLflow.** Run `test_evaluation` holds 61 metrics, the thresholds and seven tables; no existing run was changed.
