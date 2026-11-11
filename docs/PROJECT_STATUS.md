@@ -1,7 +1,7 @@
 # Fraud Intelligence Platform — Project Status
 
-**Last updated:** 2026-11-08
-**Current step:** Phase 4 (fraud models) in progress: variants A–F trained and compared on validation; final model F chosen (LightGBM, no class weights, no card history, coarse profile); F's features in `src/models` with tests; all eight runs in MLflow, reproducing exactly, F selected and A superseded; global and local SHAP explanations of F done. Next: calibration, money-based threshold, fairness audit, XGBoost check, `docs/model_results.md` (including the two limitations to measure), then open the test period once.
+**Last updated:** 2026-11-11
+**Current step:** Phase 4 (fraud models), analysis on validation complete: final model F (LightGBM, no class weights, no card history, coarse profile); global and local SHAP; calibration (Platt, nearly the identity, so ranking unchanged); probability ranking chosen as primary over expected loss (a documented deviation, 2026-11-09); fairness audit; XGBoost check (not distinguishable from F). All validation runs in MLflow reproduce exactly. Next: money-based alert threshold, `docs/model_results.md`, then open the test period once (step H).
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
 
@@ -20,7 +20,7 @@ An end-to-end financial fraud detection platform that demonstrates both **Data E
 | 1 | Ingestion, Bronze and Silver layers, Airflow | Data Engineering | ✅ Complete: Bronze ✅, Silver ✅, Airflow ✅ (transactions, holidays, Census ACS, Census Gazetteer) |
 | 2 | Star-schema warehouse (dbt) and data quality (Great Expectations) | Data Engineering | ✅ Complete: star schema design ✅, category → MCC mapping ✅, dbt tooling ✅, Gold models + quality rules ✅, `gold_dbt` DAG ✅ (Great Expectations evaluated, not used: dbt tests cover every check) |
 | 3 | Exploratory analysis and hypothesis testing | Data Science | ✅ Complete (2026-10-23): `notebooks/03_eda.ipynb`, findings in `docs/eda_findings.md` |
-| 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | 🔄 In progress: variants A–F trained and compared; final model = variant F; features in `src/models`, all runs in MLflow, global and local SHAP done; calibration, threshold, fairness audit, XGBoost check, results write-up and test period still open |
+| 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | 🔄 In progress: validation analysis complete (final model F, SHAP, calibration, ranking decision, fairness audit, XGBoost check); money-based threshold, results write-up and the one-time test period still open |
 | 5 | Causal inference on fraud risk drivers | Data Science | ⬜ Not started |
 | 6 | FastAPI service, Docker, CI/CD | MLOps | ⬜ Not started |
 | 7 | RAG over AML regulations and an agentic decision layer | GenAI | ⬜ Not started |
@@ -152,6 +152,7 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 | LightGBM, hyperparameters tuned on an inner time split inside the training period; logistic regression as baseline | Tuning never sees the validation period, so validation stays an honest estimate; the logistic baseline shows what a simple model achieves. |
 | Experiment tracking with local MLflow (SQLite, git commit tags) | Every run records its parameters, metrics and the code version; MLflow files are git-ignored because they are reproducible outputs, not code. |
 | Final model: variant F (no class weights, no card history, coarse profile) | Variant F replaced A for three reasons: statistically equal performance (paired card bootstrap), no card-fingerprint risk (exact `birth_year` + `city_pop` + income was unique for all 999 cards, while the coarse profile, a 10-year age band + urban flag, has only 18 groups), and less personal data. |
+| Primary alert ranking: probability, not expected loss (calibrated probability × amount); decided 2026-11-09, before the test period | A documented deviation from the pre-registered rule, which chose expected loss because its dollar-recall gain at 1,000 alerts was +2.8 points (95% CI 0.9 to 5.1). Reasons: the gain was not confirmed out of sample (September, July–August calibrator: +4.8 points, CI −0.2 to 10.5); at 1,000 alerts expected loss catches 105 fewer fraud cases (725 vs 830) and loses 10.5 points of precision for $14,640 more fraud dollars; it widens the gender gap in recall; and the rule weighed only dollars. Both rankings are reported on the test period, probability as the primary claim. Recorded in notebook 04 right after the money-ranking cell. |
 | Expected card count is 999, not 1,000 | Measured, not assumed: 999 distinct `cc_num` in Bronze (983 in the train file plus cards that only appear in the test file). Checks use measured numbers, never round guesses. |
 
 ---
@@ -180,21 +181,30 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 
 ## 9. To-do
 
-Phase 4 (fraud models), in progress: variants A–F trained and compared on validation; final model F chosen; F's features in `src/models` with tests; all eight runs (rule, logistic, A–F) in MLflow, reproducing exactly, F selected and A superseded; global and local SHAP explanations of F done. Next:
+Phase 4 (fraud models), in progress. Validation analysis (steps D–G) complete on 2026-11-09, test period still closed:
+
+- Calibration (D): F was already well calibrated (mean predicted 0.435% vs observed 0.429%). Platt fitted on July–August beat isotonic on September log loss (0.003449 vs 0.003702; Brier preferred isotonic, 0.000919 vs 0.000929). The final Platt calibrator (whole validation period) is close to the identity (a = 0.995, b = −0.086): PR-AUC 0.9200 and recall at 1,000 alerts 0.8478 are unchanged. Logged as MLflow run `F_calibrator` (parameters in `calibrator.json`). Base rate: train 0.576%, validation 0.429%; nothing adjusted for the test period.
+- Money ranking (E): see the ranking decision in section 7. At 1,000 alerts: probability ranking 830 cases, $484,351, precision 0.830; expected loss 725 cases, $498,991, precision 0.725.
+- Fairness audit (F), descriptive, at 1,000 alerts: see the confirmed findings below. Age bands with fewer than 10 fraud cards (10–19 with none, 60–69, 80–89, 90–99) are too few to judge.
+- XGBoost check (G): same 16 columns, same inner split; not distinguishable from F (PR-AUC −0.0006, CI −0.0045 to 0.0033; recall at 1,000 alerts +0.0061, CI −0.0077 to 0.0149). F stays final. Logged as MLflow run `xgboost_check` (`selected = no`).
+
+Confirmed findings (validation, card-bootstrap 95% intervals):
+1. Daytime fraud is caught less: recall at 1,000 alerts 65.1% for daytime fraud vs 88.3% at night (22–03h), difference 23.2 points (CI 13.7 to 31.3), probability ranking. 830 of 979 validation fraud rows are at night.
+2. Women's fraud is caught less and women get more false alarms: recall 79.7% (CI 71.7 to 86.9) for women vs 90.9% (85.8 to 95.1) for men; false-alarm rate 0.100% vs 0.045% (probability ranking). Gender is not a model feature, so this comes through other features. Descriptive, no causal claim.
 
 - [x] Move variant F's features into `src/models` (with tests)
 - [x] Log variants E and F to MLflow
 - [x] Local SHAP explanations
-- [ ] Probability calibration
-- [ ] Money-based alert threshold
-- [ ] Fairness audit (gender and age band; age band is a model feature, gender is audit-only)
-- [ ] XGBoost check
+- [x] Probability calibration
+- [ ] Money-based alert threshold (the ranking is decided: probability; the alert threshold or budget is not yet chosen)
+- [x] Fairness audit (gender and age band; age band is a model feature, gender is audit-only)
+- [x] XGBoost check
 - [ ] `docs/model_results.md`
-- [ ] Open the test period once, at the end
-- [ ] The next time notebook 04 is changed and rerun: set `MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR=false` in cell 0, so MLflow's "Downloading artifacts" progress bars stay out of the outputs
-- [ ] Document two limitations of model F (in `docs/model_results.md`):
-  1. Hypothesis: the model relies on night-time patterns, so daytime fraud is ranked lower. So far this rests on one case, local case c (a $1,117 online purchase at 14:00, rank 1,198). Not yet measured: compare recall at the 1,000-alert budget for daytime vs night-time fraud on validation.
-  2. `hour` and `is_night` share importance, so their separate SHAP shares understate their joint effect. Not yet measured: check with the group SHAP of `hour` + `is_night`, as done for the profile features.
+- [ ] Open the test period once, at the end (step H: rerun notebook 04, report both rankings with probability ranking as the primary claim)
+- [x] Set `MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR=false` in cell 0 of notebook 04
+- [ ] Document two limitations of model F (in `docs/model_results.md`), both now measured:
+  1. Daytime fraud is ranked lower: recall 65.1% vs 88.3% at night (finding 1 above).
+  2. `hour` and `is_night` overlap: their group SHAP is 0.475, more than either alone (0.332 and 0.285) but 77% of their sum (0.617). Each separate share understates their joint effect; adding the two overstates it.
 
 Phase 2 (Gold), complete:
 
