@@ -60,7 +60,10 @@ def card_bootstrap_many(cards, stat_fn, n_boot: int = 500, seed: int = 42,
 
     stat_fn receives row positions (rows of a card drawn twice appear twice) and
     returns a dict of numbers. Returns one row per statistic: the full-data
-    estimate and a percentile interval. Draws are identical to card_bootstrap.
+    estimate, a percentile interval and defined_draws, the number of draws in
+    which the statistic had a value. defined_draws = 0 flags a statistic that is
+    never defined (for example recall of a group without fraud): its bounds are
+    NaN. Draws are identical to card_bootstrap.
     """
     codes, uniques = pd.factorize(np.asarray(cards))
     if (codes < 0).any():
@@ -78,9 +81,17 @@ def card_bootstrap_many(cards, stat_fn, n_boot: int = 500, seed: int = 42,
         s = pd.Series(stat_fn(np.concatenate([blocks[c] for c in drawn])), dtype="float64")
         samples[b] = s.reindex(estimate.index).to_numpy()
 
+    # A statistic can be undefined in every draw (recall of a group with no fraud).
+    # It gets NaN bounds explicitly and defined_draws = 0, instead of a numpy warning.
     tail = 100 * (1 - level) / 2
-    low, high = np.nanpercentile(samples, [tail, 100 - tail], axis=0)
-    return pd.DataFrame({"estimate": estimate.to_numpy(), "low": low, "high": high}, index=estimate.index)
+    defined = np.isfinite(samples).sum(axis=0)
+    low = np.full(samples.shape[1], np.nan)
+    high = np.full(samples.shape[1], np.nan)
+    ok = defined > 0
+    if ok.any():
+        low[ok], high[ok] = np.nanpercentile(samples[:, ok], [tail, 100 - tail], axis=0)
+    return pd.DataFrame({"estimate": estimate.to_numpy(), "low": low, "high": high,
+                         "defined_draws": defined}, index=estimate.index)
 
 
 def recall_tie_range(y, score, n: int) -> tuple:

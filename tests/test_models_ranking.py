@@ -1,5 +1,7 @@
 """Tests for src/models/ranking.py."""
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -81,7 +83,27 @@ def test_card_bootstrap_many_pairs_differences():
     """A statistic minus itself is exactly zero in every draw, so its interval is [0, 0]."""
     cards, y, _ = fake_cards()
     out = card_bootstrap_many(cards, lambda idx: {"diff": y[idx].mean() - y[idx].mean()}, n_boot=50)
-    assert out.loc["diff"].tolist() == [0.0, 0.0, 0.0]
+    assert out.loc["diff", ["estimate", "low", "high"]].tolist() == [0.0, 0.0, 0.0]
+    assert out.loc["diff", "defined_draws"] == 50
+
+
+def test_card_bootstrap_many_flags_a_group_without_fraud_without_warning():
+    """Recall of a group with no fraud is undefined in every draw: NaN, flagged, and no warning."""
+    cards, y, score = fake_cards()
+    groups = np.where(np.arange(len(y)) % 2 == 0, "a", "b")
+    y = np.where(groups == "b", 0, y)  # group b has no fraud at all
+
+    def stat(idx):
+        t = group_alert_metrics(y[idx], top_n_mask(score[idx], 50), groups[idx])
+        return {f"recall|{k}": v for k, v in t["recall"].items()}
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = card_bootstrap_many(cards, stat, n_boot=100)
+    assert out.loc["recall|b", ["estimate", "low", "high"]].isna().all()
+    assert out.loc["recall|b", "defined_draws"] == 0
+    assert out.loc["recall|a", "defined_draws"] == 100
+    assert out.loc["recall|a", "low"] <= out.loc["recall|a", "high"]
 
 
 def test_card_bootstrap_many_rejects_missing_cards():
