@@ -1,6 +1,6 @@
 # Fraud Intelligence Platform — Project Status
 
-**Last updated:** 2026-11-11
+**Last updated:** 2026-11-12
 **Current step:** Phase 4 (fraud models) complete. Final model F (LightGBM, no class weights, no card history, coarse profile), ranked by probability, evaluated once on the test period (2026-11-11, pre-registered and published first): PR-AUC 0.918, and at 1,082 alerts (11.8 per day) recall 0.885, dollar recall 0.949, precision 0.765. Results in `docs/model_results.md`. Next: Phase 5 (causal inference).
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
@@ -320,7 +320,7 @@ Local dbt (writes `data/gold/fraud_dev.duckdb`, never `fraud.duckdb`), from `src
 | 2026-11-06 | New way of working: Claude Code builds most of each step from one task message; I review the design first and approve the gates (commits, pushes, MLflow writes, opening the test period). Step A: final model F moved into code (`age_band`, `urban` and `FINAL_COLUMNS` in `src/models`), 240 tests passing, commit `1abb178`. Step B: test-period labels hidden in notebook 04, name-based MLflow guard, the six existing runs reproduced exactly (54 values, worst difference 0), E and F logged, F selected and A superseded; commits `e8589ac`, `2ecb7b8`. |
 | 2026-11-08 | Step C: notebook 04 rerun end to end on .venv (15 min 48 s, exit 0); mlflow.db unchanged (SHA-256 identical); 74 values reconciled with worst difference 0; global SHAP of F (reconstruction error 1.9e-13), A vs F profile comparison (F keeps 76% of A's exact-profile weight), four local cases (first false alarm at rank 538); cell 23 progress bars stripped; two limitations of F recorded as hypotheses to measure; status wording changed from undefined step numbers to concrete progress. Commits `fcb654d`, `3525313`, `2856014`. |
 | 2026-11-09 | Steps D–G built, tested, run and committed: calibration (Platt), money ranking, fairness audit, XGBoost check; `F_calibrator` and `xgboost_check` logged to MLflow, all 74 existing values reproduced. Ranking decision: probability ranking primary (documented deviation from the pre-registered rule). Commits `75cc85b`, `2b1754d`, `e9c6ca8`. |
-| 2026-11-11 | All-NaN warning fixed in `card_bootstrap_many` (273 tests); ranking decision recorded in notebook 04; status updated; all commits pushed. Commits `66aff37`, `e03ef9c`, `2641d23`. |
+| 2026-11-11 | All-NaN warning fixed in `card_bootstrap_many` (273 tests); ranking decision recorded in notebook 04; status updated (`66aff37`, `e03ef9c`, `2641d23`). Step H: pre-registration + model_results.md sections 1–11 pushed before the test (`33212a1`); test period opened once (28 min 23 s, one MLflow run `test_evaluation`); F held on test: recall 0.885, dollar recall 0.949, precision 0.765, PR-AUC 0.918 at ~12 alerts/day; expected-loss dollar gain confirmed (+0.027) and reported without changing the decision (`6920d52`, `0b1bc70`). Phase 4 complete. |
 
 ---
 
