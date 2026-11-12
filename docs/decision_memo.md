@@ -29,16 +29,17 @@ Our fraud model gives every card payment a risk score. Today only the riskiest p
 
 The deciding factor is how many honest customers give up, not how much fraud is stopped: that is what the real test must measure.
 
+## A trade-off for you to decide
+
+If about 1 in 10 asked honest customers gave up, the money would still work out: total losses would still fall, because the step pays for itself unless 38–61% give up. Our success rule would still say **don't launch**, because it also limits how many honest customers we lose. That limit is there because the money count leaves out the annoyance, the lost trust and the customers who stop using their card. Whether the fraud savings are worth losing those customers is **your decision**. We wrote the limit down before the test so that this choice is visible, not hidden inside one number.
+
 ## Size of a real test
 
 Our data has 915 active cards, enough only to detect very large effects (about a 60% drop in fraud losses). A real bank, where far fewer cards see fraud than in our simulated data, would need about **180,000 cards in each half** to detect a 10% drop in fraud losses with 1% of cards seeing fraud per quarter.
 
 ## What we have not covered
 
-- The time and annoyance for honest customers who do complete the step.
-- Fraudsters moving from protected cards to unprotected ones.
-- Customers getting used to the step over time.
-- Our data is simulated: fraud is more frequent and easier to spot than in real life.
+The time and annoyance for honest customers who complete the step; fraudsters moving to unprotected cards; customers getting used to the step over time. And our data is simulated: fraud is more frequent and easier to spot than in real life.
 
 ## Recommendation
 

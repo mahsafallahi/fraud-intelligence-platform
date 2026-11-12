@@ -39,7 +39,25 @@ The trade-off: a step-up blocks some fraud, but some legitimate customers give u
 
 **Decision rule (pre-registered in cell 2, before any simulated result).** **Ship** only if there is no SRM (p ≥ 0.001), the 95% interval of (control − treatment) total loss per card has a lower bound above 0, and no Holm-adjusted guardrail is breached. **Don't ship** otherwise. **Extend** only if enrolment fell short of the plan with no SRM and no breach.
 
-The guardrail margins (5% for G1, 10% for G2) were set by the analyst when the rule was written; they are design choices, not derived from data.
+### Guardrail margins
+
+**Definitions** (computed in every experiment by `analyse` in `src/experiments/simulation.py`):
+- **G1, lost legitimate revenue, margin 5%.** Per triggered card, lost revenue = m × the legitimate dollars the card's customer abandoned. The margin is 5% of the **control arm's mean legitimate dollars stepped up per triggered card** over the 92 days (the legitimate spend that would have received a step-up). G1 is breached if a one-sided Welch test rejects "treatment minus control lost revenue per card ≤ that margin", Holm-adjusted at α = 0.05. In words: lost revenue may grow by at most 5% of the legitimate spend that gets a step-up (code: `guardrail_margin_frac=0.05`).
+- **G2, abandonment rate, margin 10%.** The pooled rate = abandoned stepped-up legitimate transactions ÷ all stepped-up legitimate transactions, over treated triggered cards with at least one legitimate step-up, with a delta-method standard error. G2 is breached if a one-sided test rejects "rate ≤ 10%", Holm-adjusted at α = 0.05 (code: `abandon_tolerance=0.10`).
+
+**Why these values.** They are round, deliberately strict limits on harm to honest customers, set well below the money break-even (38–61% abandonment at threshold 0.02, section 7), so that the guardrails protect customers even when total loss still favours shipping. They are not derived from data or customer research: a real bank should set them from complaint, attrition and customer-research data before its experiment.
+
+**Who chose them.** Your decision rule required "no Holm-adjusted guardrail breach" but did not define a breach. **Claude Code chose the two margins** when writing the pre-registration, and flagged that choice in its report.
+
+**Fixed before any result** (git evidence):
+
+| Commit | Time (+03:30) | What it fixed |
+|---|---|---|
+| `7b13557` | 2026-11-12 01:13:10 | The margins as defaults in `src/experiments/simulation.py` |
+| `77da1c4` | 2026-11-12 01:13:10 | The pre-registered rule cell of `notebooks/05_causal.ipynb`, which states both margins |
+| `1ab9d61` | 2026-11-12 01:14:31 | The executed notebook with the results: after both commits above |
+
+Full disclosure: a debugging run of the notebook on a scratch copy finished at 01:12:21, before these two commits. Its notebook sources are identical to commit `77da1c4`, so the margins were not changed after seeing it.
 
 ## 4. Thresholds
 
@@ -123,6 +141,11 @@ Threshold 0.02, triggered cards (590 per experiment), m = 1.0, 500 simulated exp
 
 - **The estimates are unbiased**: the largest relative difference from the truth is 3.0%, within Monte Carlo error.
 - **The guardrails decide**, not the primary metric: total loss falls in every scenario, but at 10% abandonment G1 is usually breached and at 20% both are.
+- **Money vs guardrail: a business decision.** At a = 10% abandonment (m = 1.0, threshold 0.02), the money says ship and the guardrail says no:
+  - Total loss still falls clearly: the true reduction is $304–$551 per triggered card (b = 50–80%), and 10% abandonment is far below the money break-even of 38–61%.
+  - But G1 is breached in 65–71% of simulated experiments, so the rule says **don't ship** (ship rate 0.19–0.33).
+
+  The guardrail exists because total loss counts only the value of the abandoned purchases. It does not price the friction for honest customers, their lost trust, complaints or cards they stop using. The guardrail caps that harm whatever the money says. Whether saving those fraud dollars is worth losing about 1 in 10 asked honest customers is a **business decision**; the rule makes it explicit before the test instead of hiding it inside one number.
 - **All enrolled cards (intention to treat)** gives the same decisions, with similar power (for example 0.86 vs 0.88 at b = 50%, a = 1%) (cell 14).
 - **m sensitivity** (b = 65%): with m = 0.25 or 0.02, 10% abandonment ships (G1 no longer breached), while 20% does not (G2, a rate, does not depend on m).
 - **Other thresholds** (b = 65%, a = 5%): every threshold ships; the true fraud reduction per triggered card is larger at higher thresholds because fewer, riskier cards are triggered.
@@ -151,7 +174,7 @@ Threshold 0.02, triggered cards (590 per experiment), m = 1.0, 500 simulated exp
 - **With one confounder hidden** (the card's night-time share, which drives both the rollout and the outcome), every adjusted method is biased again, the doubly robust estimate by −$61, and the intervals no longer cover the truth (8% for doubly robust). No adjustment can fix a confounder it cannot see. This is the reason randomised experiments are preferred: randomisation balances unmeasured variables too.
 - **Matching** is reported with bias and RMSE only. A naive bootstrap is invalid for matching estimators (Abadie & Imbens 2008), and the Abadie–Imbens standard error for an estimated propensity score is out of scope.
 - **The IPW standard error with ATT weights under-covers** (0.73 under randomisation, 0.92 with measured confounders). It treats the propensity score as known, which is conservative for the ATE but not for the ATT. Its intervals should not be used.
-- **Coverage above 95%** for the naive difference under randomisation is expected: the interval targets the population effect, while the truth used here is the effect in the simulated sample.
+- **Coverage of 0.99–1.00 under randomisation** (naive difference, trimmed IPW, doubly robust) is expected, not a defect. Their variance targets the effect in the wider population, while the truth used here is the effect in each simulated sample, which varies less. The intervals are therefore slightly too wide (conservative), not invalid. The IPW standard error with ATT weights goes the other way (coverage 0.73, see the previous point), so those intervals are not valid.
 
 ## 10. Limitations
 
