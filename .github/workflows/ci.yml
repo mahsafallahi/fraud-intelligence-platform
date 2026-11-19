@@ -1,0 +1,140 @@
+# CI (Phase 6): unit tests, then build the scoring API image and smoke-test it.
+# - No secrets: nothing here reads a secret, and the token is read-only.
+# - Every action is pinned to a full commit SHA (the tag is in the comment).
+# - Tests that need local, git-ignored data are deselected (markers gold,
+#   mlflow, container); they run on the developer machine (docs/api_design.md).
+# - The container is smoke-tested with a synthetic snapshot, generated here,
+#   and the REAL committed model bundle (its hashes are checked at startup).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.14.6"   # the project's .venv and the API image
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            requirements-api.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt -r requirements-api.txt
+
+      - name: Unit tests (local-data tests deselected, warnings are errors)
+        run: python -m pytest -m "not gold and not mlflow and not container" -rs -W error -p no:cacheprovider
+
+  docker:
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements-api.txt
+
+      - name: Synthetic serving snapshot
+        run: |
+          python -m pip install -r requirements-api.txt
+          python scripts/make_synthetic_snapshot.py build/synthetic.duckdb
+
+      - name: Build the API image
+        run: docker build -f docker/api/Dockerfile -t fraud-api:ci .
+
+      - name: Image size (fail above 700 MB)
+        run: |
+          size=$(docker image inspect fraud-api:ci --format '{{.Size}}')
+          echo "image size: $((size / 1000000)) MB"
+          test "$size" -le 700000000
+
+      - name: Start the container (read-only, snapshot mounted read-only)
+        run: |
+          docker run -d --name api --read-only -p 127.0.0.1:8000:8000 \
+            -v "$PWD/build/synthetic.duckdb:/data/serving.duckdb:ro" fraud-api:ci
+          for i in $(seq 1 30); do
+            if curl -fs http://127.0.0.1:8000/health; then echo; exit 0; fi
+            sleep 2
+          done
+          echo "API did not become healthy"; exit 1
+
+      - name: Smoke test
+        run: |
+          test "$(docker exec api id -u)" != "0"
+          python - <<'EOF'
+          import hashlib, json, urllib.error, urllib.request
+
+          BASE = "http://127.0.0.1:8000"
+          card = hashlib.md5(b"synthetic-card-A").hexdigest()
+
+          def call(path, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(BASE + path, data=data,
+                                           headers={"Content-Type": "application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=10) as r:
+                      return r.status, json.loads(r.read())
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read())
+
+          manifest = json.load(open("models/F/manifest.json"))
+          status, info = call("/model-info")
+          assert status == 200 and info["bundle_id"] == manifest["bundle_id"], info
+          assert info["snapshot"]["source_file"] == "synthetic"
+
+          good = {"card_key": card, "trans_ts": "2020-12-20T21:15:00", "amt": 912.4,
+                  "category": "shopping_net", "merch_lat": 40.9, "merch_long": -75.6,
+                  "client_ref": "ci-smoke"}
+          status, out = call("/score", good)
+          assert status == 200, out
+          assert set(out) == {"request_id", "client_ref", "model_version", "raw_score",
+                              "probability_raw", "probability_calibrated", "alert",
+                              "threshold", "reasons"}, out
+          assert out["client_ref"] == "ci-smoke" and 0 < out["probability_raw"] < 1
+          assert out["alert"] == (out["probability_raw"] >= out["threshold"])
+
+          status, out = call("/score", {**good, "card_key": "f" * 32})
+          assert status == 422 and out["code"] == "unknown_card", out
+          status, out = call("/score", {**good, "category": "casino"})
+          assert status == 422 and out["code"] == "validation_error", out
+          status, out = call("/score", {**good, "trans_ts": "2021-01-01T00:00:00"})
+          assert status == 422 and out["code"] == "date_outside_calendar", out
+          print("smoke test passed:", info["model_version"])
+          EOF
+
+      - name: Logs carry no card keys
+        run: |
+          docker logs api > api.log 2>&1
+          cat api.log
+          ! grep -E '[0-9a-f]{32}' api.log
+
+      - name: Remove the container
+        if: always()
+        run: docker rm -f api || true
