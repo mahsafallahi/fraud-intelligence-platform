@@ -8,6 +8,10 @@
 *.cmd  text eol=crlf
 *.ps1  text eol=crlf
 
+# Model bundle: stored byte for byte (manifest.json holds a SHA-256 per file,
+# and calibrator.json keeps the exact bytes MLflow wrote, CRLF included)
+models/** -text
+
 # Never touch binary files
 *.parquet binary
 *.png     binary
