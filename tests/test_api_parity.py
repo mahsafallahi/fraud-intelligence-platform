@@ -26,13 +26,14 @@ import duckdb
 import numpy as np
 import pandas as pd
 import pytest
+from fastapi.testclient import TestClient
 
 from src.api.bundle import load_bundle
 from src.api.main import create_app
 from src.api.scoring import score_features
 from src.models.features import FINAL_COLUMNS, build_features, load_model_frame
 from src.models.split import TEST, assign_split
-from tests.conftest import BUNDLE_DIR, GOLD_DEV_DB, SERVING_DB, AsgiClient
+from tests.conftest import BUNDLE_DIR, GOLD_DEV_DB, SERVING_DB
 
 pytestmark = pytest.mark.gold
 
@@ -93,7 +94,7 @@ def test_in_process_api_equals_offline(offline):
     from src.api.scoring import new_row_features
 
     app = create_app(BUNDLE_DIR, SERVING_DB)
-    client = AsgiClient(app)
+    client = TestClient(app)
     store = app.state.store
     latencies, max_diff = [], {"raw_score": 0.0, "probability_raw": 0.0, "probability_calibrated": 0.0}
     try:
@@ -105,9 +106,10 @@ def test_in_process_api_equals_offline(offline):
             pd.testing.assert_frame_equal(x.reset_index(drop=True), X.loc[[r.Index]].reset_index(drop=True),
                                           check_exact=True)
             t0 = time.perf_counter()
-            status, body, _ = client.post("/score", req)
+            resp = client.post("/score", json=req)
             latencies.append(1000 * (time.perf_counter() - t0))
-            assert status == 200, body
+            assert resp.status_code == 200, resp.text
+            body = resp.json()
             for k in max_diff:
                 max_diff[k] = max(max_diff[k], abs(body[k] - getattr(r, k)))
                 assert body[k] == getattr(r, k), (r.trans_num, k, body[k], getattr(r, k))

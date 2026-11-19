@@ -27,13 +27,13 @@ def assert_clean(messages, request_body):
 
 def test_score_log_is_one_json_line_without_request_data(api, caplog, request_body):
     with caplog.at_level(logging.INFO, logger="fraud_api"):
-        status, body, _ = api.post("/score", request_body)
-    assert status == 200
+        r = api.post("/score", json=request_body)
+    assert r.status_code == 200
     lines = records(caplog)
     assert len(lines) == 1
     event = json.loads(lines[0])
     assert event["event"] == "request" and event["status"] == 200
-    assert event["request_id"] == body["request_id"]
+    assert event["request_id"] == r.json()["request_id"]
     assert set(event) == {"event", "request_id", "method", "path", "status", "latency_ms",
                           "model_version", "alert", "probability_calibrated"}
     assert_clean(lines, request_body)
@@ -46,8 +46,8 @@ def test_score_log_is_one_json_line_without_request_data(api, caplog, request_bo
 ])
 def test_error_logs_carry_only_the_code(api, caplog, request_body, change, code):
     with caplog.at_level(logging.INFO, logger="fraud_api"):
-        status, _, _ = api.post("/score", {**request_body, **change})
-    assert status == 422
+        r = api.post("/score", json={**request_body, **change})
+    assert r.status_code == 422
     lines = records(caplog)
     assert json.loads(lines[-1])["error"] == code
     assert_clean(lines, request_body)
@@ -62,8 +62,8 @@ def test_unexpected_error_is_500_and_logs_only_the_type(api, caplog, request_bod
 
     monkeypatch.setattr(main, "score_transaction", boom)
     with caplog.at_level(logging.INFO, logger="fraud_api"):
-        status, body, _ = api.post("/score", request_body)
-    assert status == 500 and body == {"code": "internal_error"}
+        r = api.post("/score", json=request_body)
+    assert r.status_code == 500 and r.json() == {"code": "internal_error"}
     lines = records(caplog)
     assert json.loads(lines[-1])["error"] == "internal_error:RuntimeError"
     assert_clean(lines, request_body)

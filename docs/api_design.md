@@ -97,6 +97,12 @@ Test markers: `gold` (needs `data/gold/fraud_dev.duckdb` and the snapshot),
 `mlflow` (needs `mlflow.db`), `container` (needs `API_URL`). Locally they are
 skipped with the reason when the files are missing; CI deselects them.
 
+In-process API tests use FastAPI's standard `TestClient` (Starlette), which
+sends real requests through the app, middleware and error handlers included.
+It needs `httpx2` (pinned in `requirements-dev.txt` only): it is a test tool,
+so it is not in `requirements-api.txt`, the lock or the image. The container
+parity test calls the running API over plain HTTP with `urllib`.
+
 Regenerating `requirements-api.lock`: resolve `requirements-api.txt` with
 `pip install --dry-run --ignore-installed --only-binary=:all: --platform manylinux_2_28_x86_64 --platform manylinux_2_17_x86_64 --platform manylinux2014_x86_64 --python-version 3.14 --implementation cp --target <tmp> --report <report.json>`,
 constrained to the `.venv` versions, and write `name==version \` +

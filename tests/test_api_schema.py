@@ -15,12 +15,13 @@ def good(synthetic):
 
 
 def test_score_returns_every_field(api, good):
-    status, body, headers = api.post("/score", good)
-    assert status == 200, body
+    r = api.post("/score", json=good)
+    body = r.json()
+    assert r.status_code == 200, body
     assert set(body) == {"request_id", "client_ref", "model_version", "raw_score", "probability_raw",
                          "probability_calibrated", "alert", "threshold", "reasons"}
     assert body["client_ref"] == "abc-123"
-    assert headers["x-request-id"] == body["request_id"]
+    assert r.headers["x-request-id"] == body["request_id"]
     assert 0 < body["probability_raw"] < 1 and 0 < body["probability_calibrated"] < 1
     assert math.isclose(body["probability_raw"], 1 / (1 + math.exp(-body["raw_score"])), rel_tol=1e-12)
     assert body["alert"] == (body["probability_raw"] >= body["threshold"])
@@ -28,7 +29,7 @@ def test_score_returns_every_field(api, good):
 
 
 def test_reasons_are_positive_top3_with_values_and_category_names(api, good):
-    _, body, _ = api.post("/score", {**good, "amt": 1500.0, "trans_ts": "2020-12-20T23:30:00"})
+    body = api.post("/score", json={**good, "amt": 1500.0, "trans_ts": "2020-12-20T23:30:00"}).json()
     reasons = body["reasons"]
     assert 1 <= len(reasons) <= 3
     contributions = [r["contribution"] for r in reasons]
@@ -42,9 +43,11 @@ def test_reasons_are_positive_top3_with_values_and_category_names(api, good):
 
 
 def test_health_and_model_info(api):
-    assert api.get("/health")[:2] == (200, {"status": "ok"})
-    status, info, _ = api.get("/model-info")
-    assert status == 200
+    r = api.get("/health")
+    assert (r.status_code, r.json()) == (200, {"status": "ok"})
+    r = api.get("/model-info")
+    assert r.status_code == 200
+    info = r.json()
     assert info["columns"] == FINAL_COLUMNS
     assert info["threshold"]["applies_to"] == "probability_raw"
     assert info["calibrator"] == {"method": "platt"}
@@ -66,30 +69,32 @@ def test_health_and_model_info(api):
     ({"is_fraud": 0}, "is_fraud"),            # extra fields are refused
 ])
 def test_invalid_requests_are_422_with_the_field(api, good, change, field):
-    status, body, _ = api.post("/score", {**good, **change})
-    assert status == 422
+    r = api.post("/score", json={**good, **change})
+    body = r.json()
+    assert r.status_code == 422
     assert body["code"] == "validation_error"
     assert any(e["loc"][-1] == field for e in body["detail"]), body
 
 
 def test_missing_field_is_422(api, good):
     body = {k: v for k, v in good.items() if k != "amt"}
-    status, out, _ = api.post("/score", body)
-    assert status == 422 and out["detail"][0]["loc"] == ["body", "amt"]
+    r = api.post("/score", json=body)
+    assert r.status_code == 422 and r.json()["detail"][0]["loc"] == ["body", "amt"]
 
 
 def test_unknown_category_lists_the_allowed_values(api, good):
-    status, body, _ = api.post("/score", {**good, "category": "casino"})
-    assert status == 422 and body["code"] == "validation_error"
+    r = api.post("/score", json={**good, "category": "casino"})
+    body = r.json()
+    assert r.status_code == 422 and body["code"] == "validation_error"
     msg = body["detail"][0]["msg"]
     assert "shopping_net" in msg and "travel" in msg
 
 
 def test_validation_errors_do_not_echo_input(api, good):
-    _, body, _ = api.post("/score", {**good, "amt": -123.45})
+    body = api.post("/score", json={**good, "amt": -123.45}).json()
     assert all(set(e) == {"loc", "msg", "type"} for e in body["detail"])
 
 
 def test_malformed_json_is_422(api):
-    status, body, _ = api.request("POST", "/score", b"{not json")
-    assert status == 422 and body["code"] == "validation_error"
+    r = api.post("/score", content=b"{not json", headers={"content-type": "application/json"})
+    assert r.status_code == 422 and r.json()["code"] == "validation_error"
