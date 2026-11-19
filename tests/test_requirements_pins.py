@@ -29,8 +29,12 @@ def test_lock_contains_every_api_pin_with_the_same_version():
     assert {p: lock.get(p) for p in api} == api
 
 
-def test_every_lock_entry_has_a_hash():
-    text = (PROJECT_ROOT / "requirements-api.lock").read_text(encoding="utf-8")
-    entries = [line for line in text.splitlines() if PIN.match(line)]
+def test_every_lock_entry_is_pin_continuation_then_hash():
+    # pip format: "name==version \" on one line, "    --hash=sha256:<64 hex>" on the next
+    lines = (PROJECT_ROOT / "requirements-api.lock").read_text(encoding="utf-8").splitlines()
+    entries = [i for i, line in enumerate(lines) if PIN.match(line)]
     assert entries
-    assert text.count("--hash=sha256:") == len(entries)
+    for i in entries:
+        assert re.fullmatch(r"[a-z0-9.\-]+==\S+ \\", lines[i]), lines[i]
+        assert re.fullmatch(r"    --hash=sha256:[0-9a-f]{64}", lines[i + 1]), lines[i + 1]
+    assert sum("--hash=" in line for line in lines) == len(entries)
