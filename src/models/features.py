@@ -53,6 +53,17 @@ FEATURE_COLUMNS = [
 COARSE_PROFILE_FEATURES = ["age_band", "urban"]
 OUTPUT_COLUMNS = FEATURE_COLUMNS + COARSE_PROFILE_FEATURES
 
+# The 16 columns of the final model F, in the order it was trained with (same
+# as cols_f in notebooks/04_modelling.ipynb). Single source of truth; it lives
+# here, not in train.py, so the API can import it without scikit-learn or
+# LightGBM training code. train.py re-exports it.
+FINAL_COLUMNS = [
+    "amt", "hour", "is_night", "day_of_week", "category", "channel",
+    "secs_since_prev", "amt_vs_card_median", "card_txn_1h", "card_txn_24h",
+    "distance_km", "is_public_holiday_in_state", "is_nationwide_public_holiday",
+    "is_bank_holiday", "age_band", "urban",
+]
+
 REQUIRED_COLUMNS = [
     "card_key", "trans_ts", "amt", "category", "channel", "birth_year",
     "city_pop", "median_household_income", "has_income", "distance_km",

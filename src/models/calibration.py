@@ -16,14 +16,14 @@ Design (decided 2026-11-09):
 - prior_shift moves calibrated probabilities to another fraud base rate with the
   standard odds correction. It is for "what if" tables only; nothing is
   adjusted for an unknown future base rate.
+- scikit-learn is imported inside the two fit functions only, so the API can
+  load a Calibrator and predict without scikit-learn installed (Phase 6).
 """
 
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from sklearn.isotonic import IsotonicRegression
-from sklearn.linear_model import LogisticRegression
 
 EPS = 1e-7
 METHODS = ("platt", "isotonic")
@@ -82,6 +82,8 @@ class Calibrator:
 
 def fit_platt(y, p) -> Calibrator:
     """Platt scaling: logistic regression of the label on logit(p)."""
+    from sklearn.linear_model import LogisticRegression
+
     y, p = _check(y, p)
     model = LogisticRegression(C=np.inf, max_iter=1000)  # C=inf: no penalty
     model.fit(logit(p).reshape(-1, 1), y.astype(int))
@@ -90,6 +92,8 @@ def fit_platt(y, p) -> Calibrator:
 
 def fit_isotonic(y, p) -> Calibrator:
     """Isotonic regression of the label on p, clipped outside the fitted range."""
+    from sklearn.isotonic import IsotonicRegression
+
     y, p = _check(y, p)
     model = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0).fit(p, y)
     return Calibrator("isotonic", {"x": model.X_thresholds_.tolist(), "y": model.y_thresholds_.tolist()})

@@ -18,8 +18,9 @@ Design (decided 2026-10-25):
   missing-value indicators, scaling and one-hot categories, all fitted on the
   training rows only.
 - Final model: variant F (no class weights, no card history, coarse profile).
-  FINAL_COLUMNS is the single source of truth for its 16 columns, in the same
-  order as cols_f in notebooks/04_modelling.ipynb.
+  FINAL_COLUMNS (its 16 columns, in the same order as cols_f in
+  notebooks/04_modelling.ipynb) is defined in src/models/features.py and
+  re-exported here, so existing imports from this module keep working.
 """
 
 import itertools
@@ -33,7 +34,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
-from src.models.features import CARD_HISTORY_FEATURES, CATEGORICAL_FEATURES, FEATURE_COLUMNS
+from src.models.features import (  # noqa: F401  (FINAL_COLUMNS is re-exported)
+    CARD_HISTORY_FEATURES,
+    CATEGORICAL_FEATURES,
+    FEATURE_COLUMNS,
+    FINAL_COLUMNS,
+)
 from src.models.split import GAP_DAYS, TRAIN_END
 
 INNER_VALID_START = pd.Timestamp("2020-04-01")
@@ -54,13 +60,6 @@ BASE_PARAMS = {
 }
 PARAM_GRID = {"num_leaves": [15, 63], "min_child_samples": [50, 500]}
 EARLY_STOPPING_ROUNDS = 100
-
-FINAL_COLUMNS = [
-    "amt", "hour", "is_night", "day_of_week", "category", "channel",
-    "secs_since_prev", "amt_vs_card_median", "card_txn_1h", "card_txn_24h",
-    "distance_km", "is_public_holiday_in_state", "is_nationwide_public_holiday",
-    "is_bank_holiday", "age_band", "urban",
-]
 
 
 def model_columns(with_card_history: bool) -> list:
