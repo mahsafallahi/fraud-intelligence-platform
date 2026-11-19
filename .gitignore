@@ -13,6 +13,8 @@ data/landing/
 data/bronze/*
 data/silver/*
 data/gold/*
+# Serving snapshot for the API (built from Gold, holds home coordinates): never committed
+data/serving/*
 !data/*/.gitkeep
 
 # Environment
