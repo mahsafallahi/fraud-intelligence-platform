@@ -69,7 +69,10 @@ jobs:
       - name: Build the API image
         run: docker build -f docker/api/Dockerfile -t fraud-api:ci .
 
-      - name: Image size (fail above 700 MB)
+      # Image size = the UNCOMPRESSED image size, `docker image inspect .Size`
+      # (decided 2026-11-19); limit 700 MB. Not the compressed size and not
+      # Docker Desktop's containerd "disk usage" (unpacked + compressed blobs).
+      - name: Image size (uncompressed, fail above 700 MB)
         run: |
           size=$(docker image inspect fraud-api:ci --format '{{.Size}}')
           echo "image size: $((size / 1000000)) MB"

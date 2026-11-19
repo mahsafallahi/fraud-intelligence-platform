@@ -53,7 +53,14 @@ POST /score {card_key, trans_ts, amt, category, merch_lat, merch_long, client_re
 | Parity, in process | 3,000 test-period transactions (2,000 random, all 969 offline alerts, 23 near the threshold, 26 same-second; chosen without labels): features exact; raw log-odds, raw and calibrated probability max difference 0; flags and reasons 100% identical. |
 | Parity, container (Linux) | Same 3,000: raw log-odds max difference 0; probabilities max 1.11e-16 (limit 1e-12); 0 flag and 0 reason mismatches. |
 | Latency (laptop, one worker) | In process p50 39.3 ms, p99 71.5 ms; container over HTTP p50 51.1 ms, p99 86.3 ms (limit 200 ms). |
-| Image | Layers 546 MB (filesystem 516 MB), 168 MB compressed. Docker Desktop's "disk usage" shows 714 MB because the containerd store counts the unpacked layers plus the compressed blobs. |
+| Image | **546 MB uncompressed** (sum of layers; filesystem 516 MB), 168 MB compressed. Limit 700 MB. Docker Desktop's "disk usage" shows 714 MB because the containerd store counts the unpacked layers plus the compressed blobs. |
+
+**Image size definition (decided 2026-11-19):** "image size" means the
+uncompressed image size, as reported by `docker image inspect --format '{{.Size}}'`
+on a classic image store (GitHub runners). The limit is 700 MB, enforced by the
+CI step "Image size". Neither the compressed size nor Docker Desktop's
+containerd "disk usage" is the measure (with the containerd store, local
+`.Size` reports the compressed size; sum the layers of `docker history` instead).
 | Logs | 0 card keys in 3,015 container log lines. |
 
 The parity test never uses labels: `is_fraud` and `gender` are dropped right
