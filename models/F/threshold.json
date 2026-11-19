@@ -1,0 +1,7 @@
+{
+  "applies_to": "raw_probability",
+  "rule": ">=",
+  "value": 0.2940968658100669,
+  "source": "the 1000th highest raw probability of F on the validation period (notebook 04, step H); about 10.5 alerts per day on the test period",
+  "validation_alerts": 1000
+}
