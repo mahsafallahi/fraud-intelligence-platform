@@ -113,6 +113,24 @@ services:
     mem_limit: 1g
     restart: unless-stopped
 
+  # Fraud scoring API (Phase 6). Profile "api": NOT started by `docker compose up`.
+  #   docker compose --profile api up -d api      (http://localhost:8000/docs)
+  # Needs data/serving/serving.duckdb (scripts/build_serving_snapshot.py); it is
+  # mounted read-only and never baked into the image. No secrets, no .env values.
+  api:
+    profiles: ["api"]
+    image: fraud-api:dev
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data/serving/serving.duckdb:/data/serving.duckdb:ro
+    read_only: true
+    mem_limit: 1g
+    restart: unless-stopped
+
 volumes:
   postgres-db:
   airflow-logs:

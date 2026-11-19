@@ -1,0 +1,23 @@
+# Build context of docker/api/Dockerfile (BuildKit reads this file instead of the
+# root .dockerignore, which belongs to the Airflow image). Allowlist: everything
+# is excluded, then only what the API image copies is let back in.
+*
+
+!requirements-api.lock
+!src/__init__.py
+!src/models/__init__.py
+!src/models/features.py
+!src/models/calibration.py
+!src/api/*.py
+!models/F/*
+
+# Never in the context, even if a rule above is widened later
+.env
+.env.*
+data/
+mlflow.db
+mlartifacts/
+mlruns/
+.venv/
+.venv-dbt/
+**/__pycache__/
