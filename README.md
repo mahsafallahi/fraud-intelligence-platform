@@ -71,3 +71,13 @@ Notes:
   (UI: *Browse → Dag Runs*, or `DELETE /api/v2/dags/{dag_id}/dagRuns/{run_id}`).
 - Backfill runs (`airflow backfill create`) only start while the DAG is **unpaused**.
 - Local development only: the UI has no login (every user is admin) and is bound to `127.0.0.1`.
+
+### 4. Scoring API (Phase 6)
+Model F served with FastAPI; design, decisions and parity results in `docs/api_design.md`.
+```bash
+.venv/Scripts/python.exe scripts/build_serving_snapshot.py   # data/serving/serving.duckdb from Gold (read-only)
+docker compose --profile api up -d --build api               # http://localhost:8000/docs
+```
+Endpoints: `GET /health`, `GET /model-info`, `POST /score`. The model bundle is committed in `models/F/`;
+the snapshot is git-ignored and mounted read-only. CI (`.github/workflows/ci.yml`) runs the tests, builds
+the image and smoke-tests the container with a synthetic snapshot.
