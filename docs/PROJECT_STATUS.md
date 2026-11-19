@@ -1,6 +1,6 @@
 # Fraud Intelligence Platform — Project Status
 
-**Last updated:** 2026-11-12
+**Last updated:** 2026-11-19
 **Current step:** Phase 5 (experiment design and causal inference) complete. A pre-registered A/B design for step-up verification on top of the frozen model F (card-level randomisation, triggered cards at F score ≥ 0.02, fraud loss per card as the single primary, total loss as the decision metric, Holm-adjusted guardrails, fixed 92 days), rehearsed on historical data with SIMULATED effects; observational methods checked against a known truth. Results in `docs/experiment_design.md` and `docs/decision_memo.md`. Next: Phase 6 (FastAPI service, Docker, CI/CD).
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
@@ -22,7 +22,7 @@ An end-to-end financial fraud detection platform that demonstrates both **Data E
 | 3 | Exploratory analysis and hypothesis testing | Data Science | ✅ Complete (2026-10-23): `notebooks/03_eda.ipynb`, findings in `docs/eda_findings.md` |
 | 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | ✅ Complete (2026-11-11): final model F, SHAP, calibration, ranking decision, fairness audit, XGBoost check, one-time test evaluation; results in `docs/model_results.md` |
 | 5 | Causal inference on fraud risk drivers | Data Science | ✅ Complete (2026-11-12): A/B experiment design for step-up verification (power, CUPED, A/A, peeking, break-even, simulated experiments) and observational methods (matching, IPW, doubly robust) against a known truth; all effects SIMULATED; `notebooks/05_causal.ipynb`, `docs/experiment_design.md`, `docs/decision_memo.md` |
-| 6 | FastAPI service, Docker, CI/CD | MLOps | ⬜ Not started |
+| 6 | FastAPI service, Docker, CI/CD | MLOps | ✅ Complete (2026-11-19): scoring API for model F (`src/api`, bundle in `models/F`), Docker image, GitHub Actions CI; design and parity results in `docs/api_design.md`; first CI run green: [run 44603557588](https://github.com/mahsafallahi/fraud-intelligence-platform/actions/runs/44603557588) |
 | 7 | RAG over AML regulations and an agentic decision layer | GenAI | ⬜ Not started |
 | 8 | Dashboard, deployment, documentation | All | ⬜ Not started |
 
