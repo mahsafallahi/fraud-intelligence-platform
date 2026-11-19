@@ -2,3 +2,10 @@
 # Make "from src..." imports work when running pytest from the project root.
 pythonpath = ["."]
 testpaths = ["tests"]
+# Tests that need local, git-ignored files. tests/conftest.py skips them (with
+# the reason) when the files are missing; CI deselects them explicitly.
+markers = [
+    "gold: needs data/gold/fraud_dev.duckdb and/or data/serving/serving.duckdb",
+    "mlflow: needs the local MLflow store (mlflow.db, mlartifacts/)",
+    "container: needs a running API container; set API_URL (e.g. http://localhost:8000)",
+]

@@ -1,0 +1,16 @@
+# Scoring API (Phase 6): runtime dependencies only, installed in the API image.
+# Kept apart from requirements.txt, which the Airflow image installs under
+# Airflow's constraints file (Airflow 3 pins its own FastAPI).
+# Versions match .venv, where model F, its bundle and the parity tests were made;
+# tests/test_requirements_pins.py checks the packages shared with the other files.
+# The image installs requirements-api.lock (every package pinned, Linux, Python 3.14).
+lightgbm==4.7.0
+numpy==2.5.3
+scipy==1.18.1
+pandas==3.0.5
+# Must match the duckdb that writes the serving snapshot (file format)
+duckdb==1.5.6
+fastapi==0.161.1
+starlette==1.9.0
+pydantic==2.14.1
+uvicorn==0.54.0
