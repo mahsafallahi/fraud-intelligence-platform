@@ -147,8 +147,9 @@ def main() -> None:
             "bundle_id": bundle_id(files),
             "files": files,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            # the bundle folder itself is this script's output, so it does not count as dirty
             "export": {"git_commit": git("rev-parse", "--short", "HEAD"),
-                       "git_dirty": bool(git("status", "--porcelain"))},
+                       "git_dirty": bool(git("status", "--porcelain", "--", ".", ":!models/F"))},
             "mlflow": {
                 "experiment": EXPERIMENT,
                 "model_run_id": model_id,
