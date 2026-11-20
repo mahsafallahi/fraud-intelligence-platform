@@ -75,7 +75,8 @@ Check: every section in each CFR part's table of contents was found as a heading
 
 - **Sections**: a CFR section (`1020.320`), or for the FAQ `intro`, `Q1`…`Q4`. A chunk never crosses a section.
 - **Size**: target 350 words, cut at a sentence end between 280 and 350 words, and 50 words of overlap. A remainder of at most 450 words stays whole.
-- **Measured size** (nomic tokens): 28/461.5/662 (min/median/max) in 1010, 34/422/574 in 1020 and 253/397/533 in the FAQ. Legal text runs at about 1.45 tokens per word, so the largest chunks are above the planned 600 tokens. They are still far below the model's context of 2048, and `truncate=False` makes any overflow an error.
+- **Measured size** (nomic tokens): 28/461.5/662 (min/median/max) in 1010, 34/422/574 in 1020 and 253/397/533 in the FAQ. 
+- **Deviation from the plan (accepted 2026-11-20, kept as is)**: the plan said "max ~600 tokens", but the limits are implemented in **words** (max 450). Legal text runs at about 1.45 tokens per word, so the largest chunk is **662 tokens**. That is still far below the model's context of 2048, and `truncate=False` makes any overflow an error. **Any change to chunking is chosen on the dev set only.**
 - **Short chunks** (10–60 words) are real short sections, such as "Refer to § 1010.311 of this chapter". They are valid citation targets, so they are kept.
 - **Chunk id**: `{doc_id}:{section}:{seq:03d}`, e.g. `cfr31_1020:1020.320:002`. Each record carries `doc_id`, `section`, `section_title`, `subpart`, `page_start`/`page_end` (PDF pages), `label_start`/`label_end` (printed pages), `n_words`, `n_tokens`, `text` and `text_sha256`.
 - **Embedded and BM25 text**: the heading plus the text, e.g. "31 CFR § 1020.320 Reports by banks of suspicious transactions\n…".
@@ -113,6 +114,7 @@ Check: every section in each CFR part's table of contents was found as a heading
 - File `data/rag/eval/questions.jsonl`. Fields: `id`, `split`, `question`, `answerable`, `expected_sources` (a list of `(doc_id, section)`, not chunk ids, so labels survive re-chunking), `key_facts`, `author` (`user` or `claude`), `verified_absent` (for unanswerable questions: the search terms used and 0 hits).
 - **C6**: at least **10 of the 22 answerable test questions** are written by the user in their own words. Claude drafts the rest, and the user reviews and corrects **every** label.
 - **C2**: before an "unanswerable" label is accepted, a keyword search over the full corpus text must show the topic is absent. The search covers synonyms and, if they exist, section numbers, and its terms are recorded. Example: the US "travel rule" **is** in the corpus (31 CFR 1010.410(f)), so it is answerable.
+- The 5 round-1 sanity queries (§13) are seen data: dev set only, never verbatim in the test set.
 
 ## 8. Pre-registered thresholds (test set)
 
@@ -196,8 +198,7 @@ tests/        test_rag_corpus.py test_rag_parse.py test_rag_chunk.py test_rag_em
   `tests/conftest.py` skips them with a reason when their prerequisites are missing.
 - **CI**:
   - It uses FakeEmbedder (a hashed bag of words), the fake HTTP sessions and, later, a scripted fake LLM. There is no network and no model.
-  - `ci.yml` is **not changed yet**, because that needs its own approval. Until then, CI does not install pypdf, so the one `corpus` test is skipped there. This was checked locally with pypdf blocked: 388 passed, 1 skipped.
-  - Planned change: install `requirements-rag.txt` and add `not corpus and not ollama` to the `-m` expression.
+  - `ci.yml` (approved 2026-11-20): the test job also installs `requirements-rag.txt` and runs `-m "not gold and not mlflow and not container and not corpus and not ollama"`, so the tests that need local documents or a model are deselected (not silently skipped).
 
 ## 12. Gates (user approval each)
 
@@ -208,16 +209,20 @@ tests/        test_rag_corpus.py test_rag_parse.py test_rag_chunk.py test_rag_em
 | GovInfo + FinCEN download (1.23 MB) | approved, done |
 | FFIEC six sections | user, manual |
 | `ollama pull qwen2.5:7b-instruct` | not approved (only under C4) |
-| `ci.yml` changes, any push | not approved |
+| `ci.yml` change (install requirements-rag.txt, new marker selection) and push | approved 2026-11-20 |
 
 ## 13. Round-1 findings and risks
 
 **Retrieval misses on ad-hoc sanity queries** (to be measured properly on the dev set):
 - *Travel rule.* "What does the US travel rule require for funds transfers of $3,000 or more?" does not reach § 1010.410 in the top 6. Its best chunk is #1 on BM25 but #66 on dense, and #17 after fusion. The regulation never uses the words "travel rule".
 - *CTR threshold.* "What is the CTR threshold for banks?" ranks § 1010.311 #8. § 1010.330 (cash over $10,000 received in a trade or business, Form 8300) fills the top 5.
-- *Possible fixes* (to be chosen on dev only):
-  - a small glossary that expands queries ("travel rule" → "transmittal of funds … pass on")
-  - paragraph-aware chunking at "(a)", "(b)", …
+- *Possible fixes*: a small glossary that expands queries ("travel rule" → "transmittal of funds … pass on"), paragraph-aware chunking at "(a)", "(b)", …, or changes to fusion. **Any retrieval fix is chosen on the dev set only** (decision 2026-11-20).
+- **The 5 sanity queries have been seen** (their retrieval results are known). They, or their verbatim wording, may appear only in the **dev** set, never in the test set:
+  1. "What is the deadline for a bank to file a suspicious activity report?"
+  2. "What is the currency transaction report threshold for banks?"
+  3. "What does the US travel rule require for funds transfers of $3,000 or more?"
+  4. "What is the GDPR time limit to report a personal data breach to the supervisory authority?"
+  5. "How long must a bank keep a copy of a SAR and its supporting documentation?"
 
 **Other risks:**
 - The refusal margin is narrow (§6).
