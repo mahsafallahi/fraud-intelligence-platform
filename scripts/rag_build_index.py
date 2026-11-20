@@ -19,7 +19,7 @@ from src.rag.chunk import chunk_sections  # noqa: E402
 from src.rag.corpus import RAW_DIR, load_manifest, sha256_file  # noqa: E402
 from src.rag.embed import FakeEmbedder, OllamaEmbedder  # noqa: E402
 from src.rag.index import INDEX_DIR, build_index  # noqa: E402
-from src.rag.parse import read_pdf_pages, parse_document  # noqa: E402
+from src.rag.parse import load_document  # noqa: E402
 
 
 def main(argv=None) -> int:
@@ -38,7 +38,7 @@ def main(argv=None) -> int:
         if actual != doc["sha256"]:
             print(f"STOP: {path.name} SHA-256 {actual} != manifest {doc['sha256']}", file=sys.stderr)
             return 1
-        sections, pages, toc = parse_document(doc["doc_id"], read_pdf_pages(path))
+        sections, pages, toc = load_document(doc["doc_id"], path)
         doc_chunks = chunk_sections(sections)
         stripped = collections.Counter()
         for page in pages:

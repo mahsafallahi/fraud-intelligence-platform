@@ -42,7 +42,17 @@ run verifies the SHA-256 and stops on a mismatch without overwriting anything.
 | `cfr31_1010` | GovInfo `CFR-2025-title31-vol3-part1010.pdf` | 705,617 | 84 | 75 | 190 |
 | `cfr31_1020` | GovInfo `CFR-2025-title31-vol3-part1020.pdf` | 244,497 | 17 | 22 | 48 |
 | `fincen_sar_faq_2025` | fincen.gov `SAR-FAQs-October-2025.pdf` | 284,868 | 4 | 5 | 7 |
-| `ffiec_*` (6) | bsaaml.ffiec.gov: Cloudflare 403 to automated requests from this network | — | — | — | — |
+| `ffiec_sar` | FFIEC manual, Suspicious Activity Reporting — Overview (manual download) | 485,588 | 17 | 20 | 29 |
+| `ffiec_ctr` | FFIEC manual, Currency Transaction Reporting (Feb. 2021) | 193,520 | 5 | 9 | 10 |
+| `ffiec_cdd` | FFIEC manual, Customer Due Diligence — Overview (05/05/2018) | 147,059 | 7 | 5 | 10 |
+| `ffiec_cip` | FFIEC manual, Customer Identification Program (Feb. 2021) | 247,283 | 9 | 18 | 20 |
+| `ffiec_risk` | FFIEC manual, BSA/AML Risk Assessment (March 2020) | 37,916 | 4 | 8 | 8 |
+| `ffiec_appf` | FFIEC manual, Appendix F: ML/TF "Red Flags" (2/27/2015.V2) | 166,184 | 10 | 21 | 22 |
+| **Total** | | | **157** | **183** | **344** |
+
+The FFIEC files were downloaded by the user from bsaaml.ffiec.gov, which returns a
+Cloudflare 403 to automated requests from this network. They were pinned with
+`--pin` on 2026-11-21.
 
 Licences: GovInfo "Public Domain & Copyright Notice" (17 U.S.C. §105: no copyright for
 US Government works); fincen.gov site policy: public information, credit requested.
@@ -65,6 +75,29 @@ What is stripped (inspected on the real PDFs):
 | CFR | text of another part (tail of § 1010.980 at the start of the 1020 file; Part 1020 at the end of the 1010 file; Part 1021 at the end of the 1020 file), each part's table of contents and authority notes, `[Reserved]` sections | — |
 | CFR | "Subpart X—…" lines (wrapping over up to 4 lines) → `subpart` metadata | — |
 | FAQ | page number at the top, blank lines | 4 |
+| FFIEC | running title, line 1 of every page (the SAR file repeats it as the page-1 heading, which is kept) | 52 |
+| FFIEC | "FFIEC BSA/AML Examination Manual <printed page> <edition date>" (kept as `page_label`, e.g. `3`, `F–2`); **absent in the SAR section, which has no printed page numbers** | 35 |
+| FFIEC | "Return to Contents" link (Risk Assessment) | 1 |
+
+**FFIEC headings (round 2, 2026-11-21)** come from **font size**, not from text patterns:
+- A line is a heading when its pypdf text runs are larger than the document's body size. The body size is the most common size, weighted by characters.
+- Consecutive heading lines of the same size are one wrapped heading. A heading printed twice (Risk Assessment) is kept once.
+- A larger heading, or a bold one of the same size, becomes the parent of the smaller headings after it. The parent path is stored in `subpart` and goes into the embedded heading. For example, Appendix F's two "Funds Transfers" sections sit under "…Money Laundering" and "…Terrorist Financing".
+- The section id is a slug of the heading: at most 7 words, with `-2` added to a repeat. Example: `ffiec_sar:timing-of-a-sar-filing:001`.
+- Inline bold labels at body size, such as "Objective:", are not headings.
+- Footnotes stay in the text, because they hold the CFR references.
+
+**pypdf log messages (decision 2026-11-21).**
+- pypdf's logger is captured in the parser, so its messages are visible to tests instead of only printed.
+- **Any message from pypdf stops parsing (`PdfLogError`), with one allow-listed exception.** The message "Ignoring wrong pointing object" (19 times) is accepted for exactly one file, `ffiec_sar.pdf`, and only with SHA-256 `bd42e263…a3eee67e`.
+- The message comes from FFIEC's own file. The user saved it with Chrome "Save link as", which keeps the server's bytes unchanged, and its producer is macOS Quartz. The file's cross-reference table has wrong offsets, and pypdf recovers by scanning.
+- Tests:
+  - extraction is complete (17 pages, no empty page, more than 7,000 words)
+  - the other five FFIEC files log nothing
+  - an unexpected message, or the allowed message from any other hash, fails
+- Rejected:
+  - silencing pypdf logging globally (it would hide future problems)
+  - repairing the PDF with another tool (a new install, and it changes the pinned source)
 
 Words hyphenated at a line or page break are rejoined. The joined form wins when it
 occurs elsewhere in the document, and the hyphenated form wins when only that form
@@ -75,7 +108,19 @@ Check: every section in each CFR part's table of contents was found as a heading
 
 - **Sections**: a CFR section (`1020.320`), or for the FAQ `intro`, `Q1`…`Q4`. A chunk never crosses a section.
 - **Size**: target 350 words, cut at a sentence end between 280 and 350 words, and 50 words of overlap. A remainder of at most 450 words stays whole.
-- **Measured size** (nomic tokens): 28/461.5/662 (min/median/max) in 1010, 34/422/574 in 1020 and 253/397/533 in the FAQ. 
+- **Measured size** (nomic tokens, min/median/max):
+
+  | Document | Tokens |
+  |---|---|
+  | 1010 | 28 / 461.5 / 662 |
+  | 1020 | 34 / 422 / 574 |
+  | FAQ | 253 / 397 / 533 |
+  | ffiec_sar | 104 / 409 / 574 |
+  | ffiec_ctr | 38 / 380 / 615 |
+  | ffiec_cdd | 277 / 427 / 497 |
+  | ffiec_cip | 43 / 318.5 / 660 |
+  | ffiec_risk | 142 / 269 / 523 |
+  | ffiec_appf | 103 / 243 / 420 |
 - **Deviation from the plan (accepted 2026-11-20, kept as is)**: the plan said "max ~600 tokens", but the limits are implemented in **words** (max 450). Legal text runs at about 1.45 tokens per word, so the largest chunk is **662 tokens**. That is still far below the model's context of 2048, and `truncate=False` makes any overflow an error. **Any change to chunking is chosen on the dev set only.**
 - **Short chunks** (10–60 words) are real short sections, such as "Refer to § 1010.311 of this chapter". They are valid citation targets, so they are kept.
 - **Chunk id**: `{doc_id}:{section}:{seq:03d}`, e.g. `cfr31_1020:1020.320:002`. Each record carries `doc_id`, `section`, `section_title`, `subpart`, `page_start`/`page_end` (PDF pages), `label_start`/`label_end` (printed pages), `n_words`, `n_tokens`, `text` and `text_sha256`.

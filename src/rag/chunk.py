@@ -21,6 +21,17 @@ OVERLAP_WORDS = 50
 CHUNKER_VERSION = "1"
 
 FAQ_NAME = "FinCEN SAR FAQs (Oct. 9, 2025)"
+FFIEC_NAME = "FFIEC BSA/AML Examination Manual"
+
+
+def ffiec_heading(doc_id: str, subpart: str, title: str) -> str:
+    """'FFIEC BSA/AML Examination Manual: <section> › <parent headings> › <heading>' (no repeats)."""
+    _, doc_title = DOC_KINDS[doc_id]
+    parts = [doc_title]
+    for part in [p.strip() for p in subpart.split("›") if p.strip()] + [title]:
+        if all(part.casefold() != seen.casefold() for seen in parts):
+            parts.append(part)
+    return f"{FFIEC_NAME}: " + " › ".join(parts)
 
 
 @dataclass
@@ -44,6 +55,8 @@ class Chunk:
         kind, _ = DOC_KINDS[self.doc_id]
         if kind == "cfr":
             return f"31 CFR § {self.section} {self.section_title}"
+        if kind == "ffiec":
+            return ffiec_heading(self.doc_id, self.subpart, self.section_title)
         return f"{FAQ_NAME}, {self.section_title}"
 
     @property
@@ -110,7 +123,10 @@ def chunk_sections(sections: list[Section], **params) -> list[Chunk]:
 
 
 def _pages(a, b, prefix: str) -> str:
-    return f"{prefix} {a}" if a == b else f"{prefix} {a}–{b}"
+    if a == b:
+        return f"{prefix} {a}"
+    joiner = " to " if any(ch in f"{a}{b}" for ch in "–-") else "–"   # "F–2 to F–3", not "F–2–F–3"
+    return f"{prefix} {a}{joiner}{b}"
 
 
 def citation(record: dict) -> str:
@@ -121,4 +137,7 @@ def citation(record: dict) -> str:
                if record.get("label_start") else "")
     if kind == "cfr":
         return f"31 CFR § {record['section']} ({record['section_title']}), {pdf}{printed}"
+    if kind == "ffiec":
+        _, doc_title = DOC_KINDS[record["doc_id"]]
+        return f"{FFIEC_NAME}, {doc_title}, “{record['section_title']}”, {pdf}{printed}"
     return f"{FAQ_NAME}, {record['section_title']}, {pdf}{printed}"

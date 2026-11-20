@@ -1,5 +1,7 @@
 """PDF page cleaning, de-hyphenation and section splitting (fixtures: page text, no PDF)."""
 
+import re
+
 import pytest
 
 from src.rag.parse import (
@@ -118,8 +120,10 @@ def test_faq_sections():
     assert [line.pdf_page for line in sections[1].lines] == [1, 1, 2]
 
 
-def test_unknown_document_kind():
+def test_unknown_document_and_ffiec_needs_font_data():
     with pytest.raises(KeyError):
+        parse_document("unknown_doc", ["text"])
+    with pytest.raises(ValueError):
         parse_document("ffiec_sar", ["text"])
 
 
@@ -127,16 +131,17 @@ def test_unknown_document_kind():
 def test_real_corpus_parses_cleanly():
     from src.rag.chunk import chunk_sections
     from src.rag.corpus import RAW_DIR, load_manifest
-    from src.rag.parse import read_pdf_pages
+    from src.rag.parse import load_document, read_pdf_pages
     for d in load_manifest()["documents"]:
-        if d["source"] == "manual":
-            continue
-        sections, pages, toc = parse_document(d["doc_id"], read_pdf_pages(RAW_DIR / d["filename"]))
+        sections, pages, toc = load_document(d["doc_id"], RAW_DIR / d["filename"])
         assert len(pages) == d["pages"]
         chunks = chunk_sections(sections)
         text = " ".join(c.text for c in chunks)
-        for junk in ("VerDate", "</GPH>", "PROD with CFR", "Enforc. Network, Treas.", "Edition) \u00a7"):
+        for junk in ("VerDate", "</GPH>", "PROD with CFR", "Enforc. Network, Treas.", "Edition) \u00a7",
+                     "Return to Contents"):
             assert junk not in text, (d["doc_id"], junk)
+        # the manual's page line ("... Manual 3 February 2021"); the name alone may occur in sentences
+        assert not re.search(r"FFIEC BSA/AML Examination Manual\s+F?[\u2013-]?\d+\s+\S*\d", text), d["doc_id"]
         if toc:  # every TOC entry has a heading; the PDF's TOC lacks one line for 1010.663
             assert set(toc) <= {s.section for s in sections}
     sections, _, _ = parse_document("cfr31_1020", read_pdf_pages(
