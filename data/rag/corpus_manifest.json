@@ -1,0 +1,104 @@
+{
+  "description": "Phase 7 RAG corpus: US public-domain AML/fraud regulation. Documents are not committed; scripts/rag_download_corpus.py fetches them into data/rag/raw/ and checks the SHA-256. FATF is out of scope: its terms page showed a bot check and could not be verified (2026-11-20).",
+  "documents": [
+    {
+      "doc_id": "cfr31_1010",
+      "title": "31 CFR Part 1010 - General Provisions (Chapter X, FinCEN), annual edition revised as of July 1, 2025",
+      "source": "govinfo",
+      "url": "https://www.govinfo.gov/content/pkg/CFR-2025-title31-vol3/pdf/CFR-2025-title31-vol3-part1010.pdf",
+      "filename": "CFR-2025-title31-vol3-part1010.pdf",
+      "licence_note": "US Government work, no copyright (17 U.S.C. 105); GovInfo 'Public Domain & Copyright Notice'",
+      "sha256": "3ab2ead5363f99f3d7cc9f46cd076e7bc2ecd639008342e7b06cc0d629d4c853",
+      "bytes": 705617,
+      "pages": 84
+    },
+    {
+      "doc_id": "cfr31_1020",
+      "title": "31 CFR Part 1020 - Rules for Banks (Chapter X, FinCEN), annual edition revised as of July 1, 2025",
+      "source": "govinfo",
+      "url": "https://www.govinfo.gov/content/pkg/CFR-2025-title31-vol3/pdf/CFR-2025-title31-vol3-part1020.pdf",
+      "filename": "CFR-2025-title31-vol3-part1020.pdf",
+      "licence_note": "US Government work, no copyright (17 U.S.C. 105); GovInfo 'Public Domain & Copyright Notice'",
+      "sha256": "8d1b5de223f91f152a41339ee2bef14a09755cfd782b85bda1bff0276a683b28",
+      "bytes": 244497,
+      "pages": 17
+    },
+    {
+      "doc_id": "fincen_sar_faq_2025",
+      "title": "FinCEN, Frequently Asked Questions Regarding Suspicious Activity Reporting Requirements (October 9, 2025)",
+      "source": "fincen",
+      "url": "https://www.fincen.gov/system/files/2025-10/SAR-FAQs-October-2025.pdf",
+      "filename": "SAR-FAQs-October-2025.pdf",
+      "licence_note": "US Government work (17 U.S.C. 105); fincen.gov site policy: public information, credit requested",
+      "sha256": "5ed61b76f65ca1640f2d40e1afe3db40c77622620e81aefd08bc5273e0de4cac",
+      "bytes": 284868,
+      "pages": 4
+    },
+    {
+      "doc_id": "ffiec_sar",
+      "title": "FFIEC BSA/AML Examination Manual - Suspicious Activity Reporting",
+      "source": "manual",
+      "url": null,
+      "filename": "ffiec_sar.pdf",
+      "licence_note": "US federal agencies' work; downloaded manually by the user (bsaaml.ffiec.gov blocks automated requests from this network)",
+      "sha256": null,
+      "bytes": null,
+      "pages": null
+    },
+    {
+      "doc_id": "ffiec_ctr",
+      "title": "FFIEC BSA/AML Examination Manual - Currency Transaction Reporting",
+      "source": "manual",
+      "url": null,
+      "filename": "ffiec_ctr.pdf",
+      "licence_note": "as ffiec_sar",
+      "sha256": null,
+      "bytes": null,
+      "pages": null
+    },
+    {
+      "doc_id": "ffiec_cdd",
+      "title": "FFIEC BSA/AML Examination Manual - Customer Due Diligence",
+      "source": "manual",
+      "url": null,
+      "filename": "ffiec_cdd.pdf",
+      "licence_note": "as ffiec_sar",
+      "sha256": null,
+      "bytes": null,
+      "pages": null
+    },
+    {
+      "doc_id": "ffiec_cip",
+      "title": "FFIEC BSA/AML Examination Manual - Customer Identification Program",
+      "source": "manual",
+      "url": null,
+      "filename": "ffiec_cip.pdf",
+      "licence_note": "as ffiec_sar",
+      "sha256": null,
+      "bytes": null,
+      "pages": null
+    },
+    {
+      "doc_id": "ffiec_risk",
+      "title": "FFIEC BSA/AML Examination Manual - BSA/AML Risk Assessment",
+      "source": "manual",
+      "url": null,
+      "filename": "ffiec_risk.pdf",
+      "licence_note": "as ffiec_sar",
+      "sha256": null,
+      "bytes": null,
+      "pages": null
+    },
+    {
+      "doc_id": "ffiec_appf",
+      "title": "FFIEC BSA/AML Examination Manual - Appendix F: Money Laundering and Terrorist Financing Red Flags",
+      "source": "manual",
+      "url": null,
+      "filename": "ffiec_appf.pdf",
+      "licence_note": "as ffiec_sar",
+      "sha256": null,
+      "bytes": null,
+      "pages": null
+    }
+  ]
+}
