@@ -41,9 +41,9 @@
       "url": null,
       "filename": "ffiec_sar.pdf",
       "licence_note": "US federal agencies' work; downloaded manually by the user (bsaaml.ffiec.gov blocks automated requests from this network)",
-      "sha256": null,
-      "bytes": null,
-      "pages": null
+      "sha256": "bd42e2637c61ba044f1ede8b8756858aaf23d425c9cf76c3c2bb5530a3eee67e",
+      "bytes": 485588,
+      "pages": 17
     },
     {
       "doc_id": "ffiec_ctr",
@@ -52,9 +52,9 @@
       "url": null,
       "filename": "ffiec_ctr.pdf",
       "licence_note": "as ffiec_sar",
-      "sha256": null,
-      "bytes": null,
-      "pages": null
+      "sha256": "eae60cf32e493974e9966946368510f290b92d7735bdbfca24f57d7ebb8cd4e2",
+      "bytes": 193520,
+      "pages": 5
     },
     {
       "doc_id": "ffiec_cdd",
@@ -63,9 +63,9 @@
       "url": null,
       "filename": "ffiec_cdd.pdf",
       "licence_note": "as ffiec_sar",
-      "sha256": null,
-      "bytes": null,
-      "pages": null
+      "sha256": "00144960534a74932a7c8e8bf79fa62c0a7b8dfb1fb25aa2bda5cbee33843c0e",
+      "bytes": 147059,
+      "pages": 7
     },
     {
       "doc_id": "ffiec_cip",
@@ -74,9 +74,9 @@
       "url": null,
       "filename": "ffiec_cip.pdf",
       "licence_note": "as ffiec_sar",
-      "sha256": null,
-      "bytes": null,
-      "pages": null
+      "sha256": "3fe7386e11c119b471d76dd4e127e4daabbdb9e691e906733c52ea5163009f33",
+      "bytes": 247283,
+      "pages": 9
     },
     {
       "doc_id": "ffiec_risk",
@@ -85,9 +85,9 @@
       "url": null,
       "filename": "ffiec_risk.pdf",
       "licence_note": "as ffiec_sar",
-      "sha256": null,
-      "bytes": null,
-      "pages": null
+      "sha256": "54727ac006957b8eecc182d7896f083867ddbbbab3c9985d09b0b8cad46eb1e2",
+      "bytes": 37916,
+      "pages": 4
     },
     {
       "doc_id": "ffiec_appf",
@@ -96,9 +96,9 @@
       "url": null,
       "filename": "ffiec_appf.pdf",
       "licence_note": "as ffiec_sar",
-      "sha256": null,
-      "bytes": null,
-      "pages": null
+      "sha256": "68061482d1d106aac5f2e80f40adf417c04bbaf8dce5c13c75ea2dfa7ae0149a",
+      "bytes": 166184,
+      "pages": 10
     }
   ]
 }

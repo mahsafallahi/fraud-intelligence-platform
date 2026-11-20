@@ -73,6 +73,20 @@ def test_manual_documents_are_never_downloaded(tmp_path):
     assert out.status == "missing_manual"
 
 
+def test_placed_manual_file_is_pinned_only_with_pin_then_verified(tmp_path):
+    (tmp_path / "d1.pdf").write_bytes(PDF)
+    entry = doc(source="manual", url=None, sha256=None, bytes=None, pages=None)
+    no_fetch = FakeSession(error=AssertionError("no fetch"))
+    with pytest.raises(HashMismatch):  # without --pin an unhashed file is never trusted
+        fetch_document(entry, tmp_path, no_fetch)
+    out = fetch_document(entry, tmp_path, no_fetch, pin=True, count_pages=no_pages)
+    assert out.status == "pinned" and (entry["sha256"], entry["bytes"], entry["pages"]) == (PDF_SHA, len(PDF), 3)
+    assert fetch_document(entry, tmp_path, no_fetch).status == "verified"
+    (tmp_path / "d1.pdf").write_bytes(b"changed")
+    with pytest.raises(HashMismatch):  # once pinned, --pin does not re-pin a changed file
+        fetch_document(entry, tmp_path, no_fetch, pin=True)
+
+
 def test_http_error_raises(tmp_path):
     import requests
     with pytest.raises(requests.HTTPError):

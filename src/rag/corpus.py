@@ -11,7 +11,8 @@ Rules:
   first use); the hash, size and page count are then written into the manifest,
   and every later run verifies them.
 - source="manual" entries (FFIEC, blocked by a bot check from this network) are
-  never downloaded; they are only verified once the user has placed the file.
+  never downloaded. Once the user has placed the file, --pin records its hash
+  (only while the manifest has none); after that it is verified like the rest.
 """
 
 import hashlib
@@ -68,6 +69,11 @@ def fetch_document(doc: dict, raw_dir: Path, session, pin: bool = False,
     expected = doc.get("sha256")
 
     if target.exists():
+        if not expected and pin and doc.get("source") == "manual":
+            # the user placed this file by hand (FFIEC); --pin records it once
+            doc["sha256"], doc["bytes"] = sha256_file(target), target.stat().st_size
+            doc["pages"] = count_pages(target)
+            return Outcome(doc["doc_id"], "pinned", f"{doc['bytes']} bytes, {doc['pages']} pages (manual)")
         if not expected:
             raise HashMismatch(f"{doc['doc_id']}: {target.name} exists but the manifest has no "
                                "SHA-256; refusing to trust or overwrite it")
