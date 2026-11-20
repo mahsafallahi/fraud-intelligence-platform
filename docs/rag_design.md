@@ -156,8 +156,24 @@ Check: every section in each CFR part's table of contents was found as a heading
 - **42 questions** (C5):
   - **Dev: 12** (8 answerable, 4 not). Used for prompts, τ and the fallback rule C4.
   - **Test: 30** (22 answerable, 8 not). Locked and run once.
-- File `data/rag/eval/questions.jsonl`. Fields: `id`, `split`, `question`, `answerable`, `expected_sources` (a list of `(doc_id, section)`, not chunk ids, so labels survive re-chunking), `key_facts`, `author` (`user` or `claude`), `verified_absent` (for unanswerable questions: the search terms used and 0 hits).
-- **C6**: at least **10 of the 22 answerable test questions** are written by the user in their own words. Claude drafts the rest, and the user reviews and corrects **every** label.
+- File `data/rag/eval/questions.jsonl`. Fields:
+  - `id`, `split`, `question`, `answerable`
+  - `expected_sources`: a list of `(doc_id, section)`, not chunk ids, so labels survive re-chunking
+  - `key_facts`: literal strings, each found in at least one expected section
+  - `author`: `user` or `claude`
+  - `wording`: `paraphrase` or `source_terms`, plus `avoided_terms` for a paraphrase
+  - `seen`: true for the 5 sanity queries
+  - `absence_terms`: for unanswerable questions, the search terms; the checker shows they have 0 hits
+- **Original plan, C6 (superseded, kept for the record):** at least **10 of the 22 answerable test questions** written by the user in their own words; Claude drafts the rest, and the user reviews and corrects **every** label.
+- **Documented change, option B (user decision 2026-11-21, made BEFORE any retrieval or LLM run on the questions):**
+  - **C6 is dropped.** Claude drafts all 42 questions (`author: "claude"`), and the user reviews every label.
+  - **Human claim labelling** is done on a random sample of **10 answered test questions**, not all of them.
+  - **How the sample is drawn:** with Python's `random.Random(20261121).shuffle` over the sorted ids of the 22 answerable test questions. The sample is the **first 10 in this order that the system answers**; a refused question is replaced by the next one. The order is fixed now, before any run (`src/rag/questions.py`, `labelling_order`):
+    `T05, T02, T07, T15, T08, T20, T04, T22, T10, T13`, then `T19, T21, T14, T16, T01, T18, T11, T03, T12, T09, T06, T17`.
+  - **Mechanical claim check on ALL answered test questions:** every number, dollar amount, day count and section reference in an answer sentence must occur in the text of a chunk that sentence cites.
+  - The thresholds for both are in §8. All other thresholds are unchanged.
+- **Wording rule:** at least half of the answerable questions avoid the exact words of their source. A question counts as `paraphrase` when it contains none of its `avoided_terms`: the section's defining words, such as "vacation" for the employee red flag or "structur" for structuring. `scripts/rag_check_questions.py` checks this.
+- **Draft of 2026-11-21:** 16 of the 30 answerable questions are paraphrased. All 12 unanswerable topics have **0 hits** for all their terms. `scripts/rag_check_questions.py` reports 0 problems. No retrieval and no LLM have been run on the 37 new questions.
 - **C2**: before an "unanswerable" label is accepted, a keyword search over the full corpus text must show the topic is absent. The search covers synonyms and, if they exist, section numbers, and its terms are recorded. Example: the US "travel rule" **is** in the corpus (31 CFR 1010.410(f)), so it is answerable.
 - The 5 round-1 sanity queries (§13) are seen data: dev set only, never verbatim in the test set.
 
@@ -169,7 +185,8 @@ Check: every section in each CFR part's table of contents was found as a heading
 | Citation validity, raw | Cited ids that exist and were retrieved, before the validator | **≥ 0.95** |
 | Citation validity, final | After the validator (true by construction; checks the code) | **= 1.00** |
 | Citation correctness | Answered answerable questions with at least one citation in an expected section | **≥ 0.80** |
-| Claim support | Claims (sentences) labelled by the user as supported / unsupported / contradicted by their cited chunks | **≥ 0.90 supported and 0 contradicted** |
+| Claim support, human (option B) | Answer sentences in the **10-question human sample** (§7), labelled by the user as supported / unsupported / contradicted by their cited chunks. *(Original plan: all answered test questions.)* | **≥ 0.90 supported and 0 contradicted** |
+| Claim support, mechanical (option B) | On **all** answered test questions: sentences that contain a number, dollar amount, day count or section reference, where every such token occurs in the text of a chunk that sentence cites | **≥ 0.95 of such sentences pass** |
 | Correct refusal | Unanswerable questions refused | **≥ 7/8** |
 | False refusal | Answerable questions refused | **≤ 2/22** |
 | Agent (mechanical) | Valid note schema, every citation valid, reasons equal to the API's, 422 and 503 cases handled | **10/10** |
@@ -182,7 +199,7 @@ Check: every section in each CFR part's table of contents was found as a heading
   - claim support < **0.90**
   - the agent passes < **9/10** mechanical checks
 
-  The download needs its own approval.
+  The download needs its own approval. *Open point:* option B does not say who labels claim support on the **dev** set for this rule. Proposal: the user labels all answered dev questions, which is at most 8.
 - **C7, pre-registration:** before the test run, these are committed and **pushed**, which gives a public timestamp:
   - this document's thresholds
   - `questions.jsonl` with its labels
