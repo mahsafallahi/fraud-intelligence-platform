@@ -136,6 +136,41 @@ Check: every section in each CFR part's table of contents was found as a heading
   text of a cited chunk; (3) every answer sentence has ≥ 1 citation. On failure: one
   retry with the error, then the fixed refusal.
 
+**Built in round 2 (2026-11-21):**
+
+| Module | What it does |
+|---|---|
+| `src/rag/llm.py` | Ollama `/api/chat`; temperature 0, seed 42, `num_ctx` 8192, `num_predict` 400; the model digest is recorded |
+| `src/rag/citations.py` | The three checks, plus the option B mechanical claim check |
+| `src/rag/answer.py` | Retrieve, then prompt, then validate, with one retry and then the fixed refusal. Excerpts are sanitised: control characters dropped and any `<excerpt>` tag in a chunk neutralised |
+| `src/rag/prompts/*.txt` | The prompt files |
+| `scripts/rag_answer.py` | Writes run records to the git-ignored `data/rag/runs/` |
+
+**Model:** `llama3.1:latest`, digest `46e0c10c…ba87ca666e`.
+
+**Prompt files.** SHA-256 is computed with LF line endings (`prompt_hashes()`). These are the *current draft* hashes, not yet pre-registered (C7):
+
+| File | SHA-256 |
+|---|---|
+| `answer_system.txt` | `11c9e3ea399bba936c0388ecc06c1fad3b20106a2d2ce33dd8ceabbc904c4c57` |
+| `answer_user.txt` | `9a209b7627b838e85e9a34aa82b5373a881b5e171d12d91d7c6de174f42941fe` |
+| `answer_retry.txt` | `7ed8e416d62d62b7700aee0b0fa6b40c04abe448b9ce42ac6fbd24c5092c8df2` |
+
+**Smoke test on the 5 seen queries** (dev only, GPU, τ unset):
+
+| Query | Result | Time |
+|---|---|---|
+| SAR deadline | answered on attempt 1 | 23.7 s, including model load |
+| CTR threshold | refused: the model cited `1010.330:001`, a real id it was not given (it was given `:004`), on both attempts | 7.2 s |
+| Travel rule | refused, model `NO_ANSWER` on retry; consistent with the retrieval miss | 5.5 s |
+| GDPR (not answerable) | **wrongly "answered"** (defect below) | 10.9 s |
+| SAR retention | answered on attempt 2 | 8.6 s |
+
+**Defect found (to fix on dev):**
+- On the GDPR query, attempt 1 mixed `NO_ANSWER` into prose, and attempt 2 wrote a non-answer that cited irrelevant chunks and passed the validator.
+- Proposed fix: treat any reply that contains `NO_ANSWER` as a refusal.
+- The cosine τ (C1) and the mechanical claim check would also apply. It has not been changed yet.
+
 ## 6. Retrieval and refusal (C1)
 
 - Retrieval returns the top 6 by RRF, plus **`max_cosine`**: the dense cosine of the best chunk in the whole corpus.

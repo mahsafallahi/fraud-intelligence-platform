@@ -1,0 +1,6 @@
+Question: {question}
+
+Excerpts:
+{excerpts}
+
+Answer the question using only these excerpts. End every sentence with the tag(s) of the excerpt(s) that support it. If the excerpts do not answer the question, reply with exactly NO_ANSWER.

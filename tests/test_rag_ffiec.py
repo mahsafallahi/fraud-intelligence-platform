@@ -40,7 +40,7 @@ def test_no_messages_is_fine_for_any_file():
 
 def test_pypdf_logger_is_captured_and_restored(tmp_path, monkeypatch):
     """A message logged by pypdf while reading is returned (not printed), and the logger is restored."""
-    import pypdf
+    pypdf = pytest.importorskip("pypdf")
 
     class FakePage:
         def extract_text(self):
@@ -51,7 +51,6 @@ def test_pypdf_logger_is_captured_and_restored(tmp_path, monkeypatch):
         def __init__(self, path):
             self.pages = [FakePage()]
 
-    pytest.importorskip("pypdf")
     monkeypatch.setattr(pypdf, "PdfReader", FakeReader)
     logger = logging.getLogger("pypdf")
     before = (list(logger.handlers), logger.propagate)
