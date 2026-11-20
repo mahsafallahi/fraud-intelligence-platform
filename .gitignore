@@ -42,3 +42,7 @@ mlflow.db
 
 # OS
 .DS_Store
+# Phase 7 RAG: downloaded documents, built index and run outputs (reproducible; the manifest is committed)
+data/rag/raw/
+data/rag/index/
+data/rag/runs/

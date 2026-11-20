@@ -24,6 +24,17 @@ def test_api_pins_match_dev_and_runtime_pins():
         assert not diff, f"requirements-api.txt and {other} disagree: {diff}"
 
 
+def test_rag_pins_match_every_other_requirements_file():
+    rag = pins("requirements-rag.txt")
+    assert rag == {"numpy": "2.5.3", "pypdf": "7.1.1"}
+    for other in ("requirements.txt", "requirements-dev.txt", "requirements-api.txt", "requirements-dbt.txt"):
+        shared = set(rag) & set(pins(other))
+        diff = {p: (rag[p], pins(other)[p]) for p in shared if rag[p] != pins(other)[p]}
+        assert not diff, f"requirements-rag.txt and {other} disagree: {diff}"
+    lines = (PROJECT_ROOT / "requirements-rag.txt").read_text(encoding="utf-8").splitlines()
+    assert "-r requirements.txt" in lines
+
+
 def test_lock_contains_every_api_pin_with_the_same_version():
     api, lock = pins("requirements-api.txt"), pins("requirements-api.lock")
     assert {p: lock.get(p) for p in api} == api

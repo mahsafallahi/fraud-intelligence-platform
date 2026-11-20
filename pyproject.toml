@@ -8,4 +8,6 @@ markers = [
     "gold: needs data/gold/fraud_dev.duckdb and/or data/serving/serving.duckdb",
     "mlflow: needs the local MLflow store (mlflow.db, mlartifacts/)",
     "container: needs a running API container; set API_URL (e.g. http://localhost:8000)",
+    "corpus: needs the Phase 7 documents in data/rag/raw/ (scripts/rag_download_corpus.py) and pypdf",
+    "ollama: needs a local Ollama server (127.0.0.1:11434) with the Phase 7 models",
 ]

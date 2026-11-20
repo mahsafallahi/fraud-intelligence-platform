@@ -1,0 +1,10 @@
+# Phase 7 RAG assistant and alert agent: extra runtime dependencies.
+# Kept apart from requirements.txt (Airflow image) and requirements-api.txt (API image).
+# The LLM and the embedder run in a local Ollama server and are called over HTTP with
+# requests (already pinned in requirements.txt); no Ollama Python client is needed.
+# tests/test_requirements_pins.py checks the packages shared with the other files.
+-r requirements.txt
+# Same version as requirements-api.txt (vectors, cosine search, BM25)
+numpy==2.5.3
+# PDF text extraction (BSD, pure Python, no dependencies); PyMuPDF rejected (AGPL, pulls onnxruntime)
+pypdf==7.1.1
