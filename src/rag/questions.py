@@ -42,7 +42,7 @@ def corpus_hits(term: str, texts: list[str]) -> int:
 
 def check_questions(records: list[dict], section_texts: dict[str, str]) -> tuple[list[str], dict]:
     """(problems, report). `section_texts` maps "doc_id:section" -> full section text (with heading)."""
-    problems, report = [], {"facts_also_in": {}, "absence": {}, "counts": {}}
+    problems, report = [], {"facts_also_in": {}, "source_facts": {}, "absence": {}, "counts": {}}
     all_texts = list(section_texts.values())
 
     ids = [r["id"] for r in records]
@@ -71,6 +71,11 @@ def check_questions(records: list[dict], section_texts: dict[str, str]) -> tuple
             for k in keys:
                 if k not in section_texts:
                     problems.append(f"{rid}: expected section {k} is not in the index")
+            for k in keys:   # which key facts each expected source actually contains
+                report["source_facts"][(rid, k)] = [f for f in r.get("key_facts", [])
+                                                    if k in section_texts and corpus_hits(f, [section_texts[k]])]
+                if k in section_texts and not report["source_facts"][(rid, k)]:
+                    problems.append(f"{rid}: expected section {k} contains none of the key facts")
             if not r.get("key_facts"):
                 problems.append(f"{rid}: no key_facts")
             for fact in r.get("key_facts", []):

@@ -33,6 +33,12 @@ def main() -> int:
     for (rid, fact), others in report["facts_also_in"].items():
         if others:
             print(f"  {rid} {fact!r}: {len(others)} -> {others[:6]}{' ...' if len(others) > 6 else ''}")
+    print("\nexpected sources that contain none of their question's key facts:")
+    empty = [(rid, k) for (rid, k), facts in report["source_facts"].items() if not facts]
+    for rid, k in empty:
+        print(f"  {rid}: {k}")
+    if not empty:
+        print("  (none)")
     test_ids = [r["id"] for r in records if r["split"] == "test" and r["answerable"]]
     order = labelling_order(test_ids)
     print(f"\nhuman claim-labelling order (seed {LABEL_SEED}; sample = first {LABEL_SAMPLE_SIZE} answered): {order}")

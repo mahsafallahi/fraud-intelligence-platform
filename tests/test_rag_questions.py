@@ -70,6 +70,12 @@ def test_missing_section_and_missing_fact():
     assert any("'45 calendar days' not found" in p for p in problems)
 
 
+def test_every_expected_section_must_contain_a_key_fact():
+    recs = full_set()
+    recs[20]["expected_sources"] = [["cfr31_1020", "1020.320"], ["ffiec_appf", "employees"]]
+    assert "T09: expected section ffiec_appf:employees contains none of the key facts" in problems_of(recs)
+
+
 def test_paraphrase_must_avoid_its_terms_and_half_must_be_paraphrased():
     recs = full_set()
     recs[0]["question"] = "When is the SAR due?"
