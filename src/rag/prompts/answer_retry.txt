@@ -1,4 +1,4 @@
 Your previous answer failed these checks:
 {errors}
 
-Write the answer again and follow the rules: end every sentence with the exact tag of an excerpt above that supports it, use only tags that appear in the excerpts, and mention a section number only if it appears in an excerpt cited in the same sentence. If the excerpts do not answer the question, reply with exactly NO_ANSWER.
+Write the answer again and follow the rules: end every sentence with the number(s) of the excerpt(s) above that support it, like [1] or [2, 3], use only the numbers of the excerpts you were given, and mention a section number only if it appears in an excerpt cited in the same sentence. If the excerpts do not answer the question, reply with exactly NO_ANSWER and nothing else.

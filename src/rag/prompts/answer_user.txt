@@ -3,4 +3,4 @@ Question: {question}
 Excerpts:
 {excerpts}
 
-Answer the question using only these excerpts. End every sentence with the tag(s) of the excerpt(s) that support it. If the excerpts do not answer the question, reply with exactly NO_ANSWER.
+Answer the question using only these excerpts. End every sentence with the number(s) of the excerpt(s) that support it, like [1] or [2, 3]. If the excerpts do not answer the question, reply with exactly NO_ANSWER and nothing else.

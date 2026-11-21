@@ -58,6 +58,11 @@ def main(argv=None) -> int:
               f"max_cosine={out.max_cosine:.4f}")
         for n, v in enumerate(out.validations, start=1):
             print(f"   validation {n}: {'PASS' if v.ok else 'FAIL'} {v.errors}")
+        if out.status == "answered":
+            ok = sum(c["ok"] for c in out.claim_checks)
+            print(f"   mechanical number check: {ok}/{len(out.claim_checks)} sentences pass"
+                  + "".join(f"\n      missing {c['missing']} in: {c['sentence'][:90]!r}"
+                            for c in out.claim_checks if not c["ok"]))
         print("   " + out.rendered.replace("\n", "\n   "))
         rec = asdict(out)
         rec["validations"] = [{"ok": v.ok, "errors": v.errors, "cited": v.cited} for v in out.validations]

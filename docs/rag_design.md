@@ -128,13 +128,17 @@ Check: every section in each CFR part's table of contents was found as a heading
 
 ## 5. Citations
 
-- The model may only write `[C:<chunk_id>]`. **Pages and section names are rendered by
-  code** from metadata, e.g. `31 CFR § 1020.320 (Reports by banks of suspicious
-  transactions), PDF p. 10–11, printed p. 1197–1198`.
-- Validator (round 2): (1) every tag matches the regex, exists in the index and is in
-  this question's retrieved set; (2) every "§ 10xx.xxx" in the prose occurs in the
-  text of a cited chunk; (3) every answer sentence has ≥ 1 citation. On failure: one
-  retry with the error, then the fixed refusal.
+- **Current format (round 3, 2026-11-22):**
+  - The model sees the retrieved excerpts numbered **[1]..[k]**, with k = 6. It never sees chunk ids.
+  - It cites only those numbers, as `[2]` or `[1, 3]`.
+  - Code maps each number back to its chunk id. **Pages and section names are rendered by code** from metadata, e.g. `31 CFR § 1020.320 (Reports by banks of suspicious transactions), PDF p. 10–11, printed p. 1197–1198`.
+- **Superseded format (rounds 1–2, kept for the record):** the model copied `[C:<chunk_id>]` tags.
+- **The validator's three checks**:
+  1. every citation is well-formed and every number is within 1..k, so it maps to a chunk that exists and was retrieved. Old-style `[C:…]` tags and ranges like `[1-2]` are rejected as malformed.
+  2. every "§ 10xx.xxx" in a sentence occurs in a chunk cited in that sentence.
+  3. every sentence has at least one citation.
+
+  On failure there is one retry with the errors, then the fixed refusal. The option B mechanical number check runs on every accepted answer and is stored in `Answer.claim_checks`.
 
 **Built in round 2 (2026-11-21):**
 
@@ -148,15 +152,15 @@ Check: every section in each CFR part's table of contents was found as a heading
 
 **Model:** `llama3.1:latest`, digest `46e0c10c…ba87ca666e`.
 
-**Prompt files.** SHA-256 is computed with LF line endings (`prompt_hashes()`). These are the *current draft* hashes, not yet pre-registered (C7):
+**Prompt files.** SHA-256 is computed with LF line endings (`prompt_hashes()`). These are the *current draft* hashes (round 3), not yet pre-registered (C7):
 
-| File | SHA-256 |
-|---|---|
-| `answer_system.txt` | `11c9e3ea399bba936c0388ecc06c1fad3b20106a2d2ce33dd8ceabbc904c4c57` |
-| `answer_user.txt` | `9a209b7627b838e85e9a34aa82b5373a881b5e171d12d91d7c6de174f42941fe` |
-| `answer_retry.txt` | `7ed8e416d62d62b7700aee0b0fa6b40c04abe448b9ce42ac6fbd24c5092c8df2` |
+| File | SHA-256 (round 3, current) | SHA-256 (round 2, superseded) |
+|---|---|---|
+| `answer_system.txt` | `ba81910cde5cdc6df79af48b2fe5c85816620bb6364320af680988c7278934fc` | `11c9e3ea…904c4c57` |
+| `answer_user.txt` | `a551854bf2f0c862d2082977f991a59b05a373a18f7b446f7cf16c0829d95bd4` | `9a209b76…f42941fe` |
+| `answer_retry.txt` | `bc981d1475780994eabfc0842f82f81af6bb911a156db77b994cca6ecee8fb0b` | `7ed8e416…5092c8df2` |
 
-**Smoke test on the 5 seen queries** (dev only, GPU, τ unset):
+**Round-2 smoke test on the 5 seen queries** (dev only, GPU, τ unset):
 
 | Query | Result | Time |
 |---|---|---|
@@ -166,10 +170,17 @@ Check: every section in each CFR part's table of contents was found as a heading
 | GDPR (not answerable) | **wrongly "answered"** (defect below) | 10.9 s |
 | SAR retention | answered on attempt 2 | 8.6 s |
 
-**Defect found (to fix on dev):**
-- On the GDPR query, attempt 1 mixed `NO_ANSWER` into prose, and attempt 2 wrote a non-answer that cited irrelevant chunks and passed the validator.
-- Proposed fix: treat any reply that contains `NO_ANSWER` as a refusal.
-- The cosine τ (C1) and the mechanical claim check would also apply. It has not been changed yet.
+**Defect found in round 2:** on the GDPR query, attempt 1 mixed `NO_ANSWER` into prose, and attempt 2 wrote a non-answer that cited irrelevant chunks and passed the validator.
+
+**Round-3 changes on dev** (2026-11-22). The user ruled that the 5 sanity queries are dev only, so fixing defects found on them is allowed; changes are banned only after the test run.
+
+| # | Change | Reason | Dev evidence |
+|---|---|---|---|
+| 1 | **Refusal:** a reply that contains `NO_ANSWER` (or `NO ANSWER`, any case) **anywhere** is a refusal. The system prompt now also says "NO_ANSWER and nothing else; do not explain why". | The round-2 rule only accepted a reply that was exactly `NO_ANSWER` | GDPR (seen query D04): attempt 1 contained `NO_ANSWER` among sentences; the retry passed validation, so a not-answerable question was answered. Tested on both the first reply and the retry (`tests/test_rag_answer.py`) |
+| 2 | **Citations:** numbered excerpts [1]..[k], mapped back to chunk ids by code (§5) | Copying long chunk-id tags invites the model to alter them | CTR (seen query D02): on both attempts the model cited `1010.330:001`, which it was never given; it altered the id `1010.330:004` that it was given, and a correct answer was refused. Tested: out-of-range numbers, old-style tags, mapping and rendering, and the injection chunk |
+| 3 | **C4 on dev** uses the **mechanical number/section check (≥ 0.95)** instead of human claim labels (§8). Human labels remain only for the 10-question test sample. | User decision; it closes the round-2 open point | — |
+
+**Round-3 smoke test:** *pending.* The Ollama server was not running, and starting it is outside the approved gates for this round.
 
 ## 6. Retrieval and refusal (C1)
 
@@ -208,6 +219,11 @@ Check: every section in each CFR part's table of contents was found as a heading
   - **Mechanical claim check on ALL answered test questions:** every number, dollar amount, day count and section reference in an answer sentence must occur in the text of a chunk that sentence cites.
   - The thresholds for both are in §8. All other thresholds are unchanged.
 - **Wording rule:** at least half of the answerable questions avoid the exact words of their source. A question counts as `paraphrase` when it contains none of its `avoided_terms`: the section's defining words, such as "vacation" for the employee red flag or "structur" for structuring. `scripts/rag_check_questions.py` checks this.
+- **Round 3 (2026-11-22):**
+  - T28 and T30 were replaced by topics that are not next to anything in the corpus.
+  - T12 and T17 got stronger key facts.
+  - A new rule says every expected source must contain at least one key fact. It led to five label fixes (T02, T03, T08, T16, T18).
+  - All changes are listed with reasons in `data/rag/eval/questions_review.md`, together with the full 42-question table for review.
 - **Draft of 2026-11-21:** 16 of the 30 answerable questions are paraphrased. All 12 unanswerable topics have **0 hits** for all their terms. `scripts/rag_check_questions.py` reports 0 problems. No retrieval and no LLM have been run on the 37 new questions.
 - **C2**: before an "unanswerable" label is accepted, a keyword search over the full corpus text must show the topic is absent. The search covers synonyms and, if they exist, section numbers, and its terms are recorded. Example: the US "travel rule" **is** in the corpus (31 CFR 1010.410(f)), so it is answerable.
 - The 5 round-1 sanity queries (§13) are seen data: dev set only, never verbatim in the test set.
@@ -231,10 +247,10 @@ Check: every section in each CFR part's table of contents was found as a heading
 - **After the test run**: there are no prompt changes. A failed threshold is reported as a fail.
 - **C4, the model fallback rule (decided on dev, before the test run):** switch to `qwen2.5:7b-instruct` only if, on dev, any of these holds:
   - raw citation validity < **0.95**
-  - claim support < **0.90**
+  - **mechanical number/section check < 0.95** of the dev answer sentences that contain a number, dollar amount, day count or section reference *(round 3, user decision 2026-11-22; replaces "claim support < 0.90", which would have needed human labels on dev)*
   - the agent passes < **9/10** mechanical checks
 
-  The download needs its own approval. *Open point:* option B does not say who labels claim support on the **dev** set for this rule. Proposal: the user labels all answered dev questions, which is at most 8.
+  The download needs its own approval. Human claim labels are used only on the 10-question test sample (§7).
 - **C7, pre-registration:** before the test run, these are committed and **pushed**, which gives a public timestamp:
   - this document's thresholds
   - `questions.jsonl` with its labels
