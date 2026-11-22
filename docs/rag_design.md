@@ -224,6 +224,8 @@ Check: every section in each CFR part's table of contents was found as a heading
   - T12 and T17 got stronger key facts.
   - A new rule says every expected source must contain at least one key fact. It led to five label fixes (T02, T03, T08, T16, T18).
   - All changes are listed with reasons in `data/rag/eval/questions_review.md`, together with the full 42-question table for review.
+- **Label review (2026-11-23):** done in the chat with the user. **The user approved the question set** with one fix: T05 asks two things, so it got a second key fact for the prohibition from § 1010.314, "No person shall for the purpose of evading". The checker still reports 0 problems.
+- **Known limitation:** the dev set is less paraphrased (**2/8** answerable) than the test set (**14/22**). Dev retrieval results may overstate performance on reworded questions.
 - **Draft of 2026-11-21:** 16 of the 30 answerable questions are paraphrased. All 12 unanswerable topics have **0 hits** for all their terms. `scripts/rag_check_questions.py` reports 0 problems. No retrieval and no LLM have been run on the 37 new questions.
 - **C2**: before an "unanswerable" label is accepted, a keyword search over the full corpus text must show the topic is absent. The search covers synonyms and, if they exist, section numbers, and its terms are recorded. Example: the US "travel rule" **is** in the corpus (31 CFR 1010.410(f)), so it is answerable.
 - The 5 round-1 sanity queries (§13) are seen data: dev set only, never verbatim in the test set.

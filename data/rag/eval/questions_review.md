@@ -31,7 +31,7 @@ No retrieval and no LLM have been run on the 37 questions that are not seen quer
 | T02 | test | A teller sees what looks like an ongoing money laundering scheme. Apart from the written report, what should the bank do straight away? | `cfr31_1020:1020.320` | “by telephone” | yes |
 | T03 | test | Within how many days after the transaction must a CTR be filed? | `cfr31_1010:1010.306`<br>`ffiec_ctr:filing-and-record-retention` | “15 days”<br>“15 calendar days” | no |
 | T04 | test | A customer makes three cash deposits of $4,000 each at different branches on the same day. Must the bank look at them together for reporting purposes? | `cfr31_1010:1010.313`<br>`ffiec_ctr:aggregation-of-currency-transactions` | “single transaction”<br>“more than $10,000” | yes |
-| T05 | test | What is it called when someone splits a large sum of cash into smaller deposits to avoid a government report, and is it allowed? | `cfr31_1010:1010.100`<br>`cfr31_1010:1010.314`<br>`fincen_sar_faq_2025:Q1`<br>`ffiec_ctr:structured-transactions-ctr-requirements` | “structuring” | yes |
+| T05 | test | What is it called when someone splits a large sum of cash into smaller deposits to avoid a government report, and is it allowed? | `cfr31_1010:1010.100`<br>`cfr31_1010:1010.314`<br>`fincen_sar_faq_2025:Q1`<br>`ffiec_ctr:structured-transactions-ctr-requirements` | “structuring”<br>“No person shall for the purpose of evading” | yes |
 | T06 | test | Someone wants to buy a cashier's check with $5,000 in cash. What must the bank record? | `cfr31_1010:1010.415` | “$3,000 or more in currency” | yes |
 | T07 | test | What information must a bank obtain from an individual before opening an account under its customer identification program? | `cfr31_1020:1020.220`<br>`ffiec_cip:customer-information-required` | “Date of birth” | no |
 | T08 | test | For how long must a bank keep a customer's identifying details after the account is closed? | `cfr31_1020:1020.220`<br>`ffiec_cip:recordkeeping-and-retention-requirements` | “five years after the date the account is closed”<br>“five years after the account is closed” | yes |
@@ -87,3 +87,9 @@ The word "Basel" occurs once in the corpus, so it is not used in the new T28 que
 | T08 | added the fact "five years after the account is closed" | this is the FFIEC CIP wording |
 | T16 | removed `ffiec_appf:funds-transfers-2` | that is the terrorist-financing list; the question asks about money laundering |
 | T18 | added the facts "first step" and "second step"; removed `ffiec_risk:bsa-aml-risk-assessment-process` | that section does not describe the two steps |
+
+## Review outcome (2026-11-23)
+
+- The label review was done in the chat. The user approved the set with one fix.
+- **T05** asks two things: the name, and whether it is allowed. A second key fact for the prohibition was added from § 1010.314: “No person shall for the purpose of evading”. The checker still reports 0 problems.
+- **Known limitation:** the dev set is less paraphrased (2 of 8 answerable) than the test set (14 of 22). Dev results may therefore overstate how well retrieval handles reworded questions.
