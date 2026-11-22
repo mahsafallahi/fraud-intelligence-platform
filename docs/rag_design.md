@@ -186,11 +186,58 @@ Check: every section in each CFR part's table of contents was found as a heading
 
 - Retrieval returns the top 6 by RRF, plus **`max_cosine`**: the dense cosine of the best chunk in the whole corpus.
 - **The refusal signal is `max_cosine`, never the fused RRF score.** RRF is rank-based, so the top chunk scores high even when nothing is relevant. `max_bm25` is an optional second condition.
-- **τ is set on the dev set only, by this rule:**
-  - If the dev max_cosine values separate (every answerable question is above every unanswerable one), τ = the midpoint between the lowest answerable and the highest unanswerable value.
-  - Otherwise, τ is the value that maximises correct decisions on dev (refusing the unanswerable ones and answering the answerable ones). A tie goes to the lower τ.
-  - The BM25 condition (refuse only if `max_cosine < τ_cos` **and** `max_bm25 < τ_bm25`) is adopted only if it raises dev accuracy.
-  - Both choices are fixed and pushed before the test run (C7).
+- **τ rule, current (user decision 2026-11-23; replaces the rule below):** τ is set on the dev set only, using the dense max_cosine of the chosen retrieval configuration.
+  - If every answerable dev question scores above every unanswerable one, τ = the midpoint between the lowest answerable and the highest unanswerable value.
+  - **If no τ separates them, τ is disabled (None).** Refusal then relies on `NO_ANSWER` and the validator, and this is recorded.
+  - There is no BM25 condition.
+- *Superseded τ rule (rounds 1–3, kept for the record):*
+  - if the values separate, the midpoint;
+  - otherwise the value that maximises correct decisions on dev, with ties to the lower τ;
+  - plus an optional BM25 second condition, adopted only if it raised dev accuracy.
+
+### 6a. Retrieval selection rule (round 4, written 2026-11-23 BEFORE any selection run)
+
+**Candidates**, in order from simplest to most complex. **This order breaks ties:**
+1. **BM25 only.** No model.
+2. **Dense only.** nomic-embed-text.
+3. **Hybrid RRF.** Dense + BM25, k = 60. This is the current configuration.
+4. **Hybrid RRF + query glossary.** The glossary below is appended to the query before both retrievers.
+5. **Hybrid RRF + paragraph-level splitting.** CFR chunks also never cross a top-level paragraph marker `(a)`, `(b)`, … at a line start. A marker counts only if it is the next letter in sequence, so `(i)` inside a paragraph does not split. The chunker version is recorded as `"paragraphs": true`. FFIEC and FAQ chunking is unchanged.
+
+**Criterion:**
+- **Recall@6 on the 8 answerable dev questions.** A question counts when at least one of its expected `(doc_id, section)` pairs is among the sections of the top-6 chunks.
+- The highest recall wins, and **a tie goes to the simplest candidate** in the order above.
+- Nothing else is tuned: k = 6 and RRF k = 60 stay fixed.
+- The selection uses retrieval only, with no LLM.
+
+**Then τ** is set from the chosen configuration's dev max_cosine, by the current rule above.
+
+**Glossary.** It lives in `src/rag/glossary.py` and was written before the run. It contains only common AML jargon, mapped to regulatory wording. A trigger matches as a whole word, ignoring case:
+
+| Trigger | Appended expansion |
+|---|---|
+| SAR | suspicious activity report |
+| CTR | currency transaction report, report of transactions in currency |
+| travel rule | transmittal of funds, transmittal order, information included in a transmittal order |
+| wire, wire transfer | funds transfer, transmittal of funds |
+| cash | currency |
+| structuring | structure transactions to evade reporting requirements |
+| KYC, know your customer | customer identification program, customer due diligence |
+| CIP | customer identification program |
+| CDD | customer due diligence |
+| beneficial owner | legal entity customer, equity interests, control |
+| FBAR | report of foreign bank and financial accounts |
+| CMIR | report of international transportation of currency or monetary instruments |
+| Form 8300 | currency received in a trade or business |
+| 314(a) | information sharing between government agencies and financial institutions |
+| 314(b) | voluntary information sharing among financial institutions |
+| red flag | potentially suspicious activity |
+| PEP, politically exposed person | senior foreign political figure |
+
+**Known bias:**
+- The glossary's author also wrote all 42 questions. Some triggers ("cash", "wire", "CTR", "SAR", "travel rule") occur in test questions.
+- The entries are standard AML jargon, not test answers. Even so, a gain from the glossary on the test set should be read with this caveat.
+- "travel rule" is also the wording of seen dev query D03.
 - Further refusals: the model answers `NO_ANSWER`, or the validator fails twice.
 - **Round-1 evidence** (ad-hoc sanity queries, not the dev set):
   - A question that is not in the corpus (the GDPR breach-notification deadline) scored max_cosine **0.696**.
