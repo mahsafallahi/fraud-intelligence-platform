@@ -284,6 +284,16 @@ Check: every section in each CFR part's table of contents was found as a heading
 - **Per the user's instruction, work stopped here, before any model pull, to ask the user.**
 - Not frozen, not pushed.
 
+**Diagnosis recorded with the user (2026-11-23):**
+- **D03 failed because the model answered from memory when retrieval missed § 1010.410.** "Travel rule" and "$3,000 or more" are not in the excerpts it was given, and it attached them to § 1010.440, a definition.
+- **D08 contains an unsupported advisory sentence**: "The bank should … consider it as part of its ongoing monitoring of the customer relationship". It has no number or section, so the mechanical check cannot see it. **Only human claim labels can catch this kind of error.** On the test set, that means the 10-question human sample.
+
+**User decision:** follow rule C4. The `qwen2.5:7b-instruct` pull is approved. Retrieval, prompts, τ and every other setting stay unchanged.
+
+**Case the rule did not cover, written BEFORE the qwen2.5 run:**
+- **If both models fail C4 on dev, the model with the higher mechanical-check rate is chosen.** On a tie, llama3.1 stays.
+- The C4 failure is then reported as a **known limitation** in the pre-registration and in the results.
+
 ## 7. Question set
 
 - **42 questions** (C5):
