@@ -31,7 +31,8 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def build_index(chunks: list[Chunk], embedder, out_dir: Path, corpus_hashes: dict[str, str]) -> dict:
+def build_index(chunks: list[Chunk], embedder, out_dir: Path, corpus_hashes: dict[str, str],
+                paragraphs: bool = False) -> dict:
     if not chunks:
         raise ValueError("no chunks")
     embedded = embedder.embed_documents([c.embed_text for c in chunks])
@@ -44,7 +45,7 @@ def build_index(chunks: list[Chunk], embedder, out_dir: Path, corpus_hashes: dic
         "created_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "corpus": dict(sorted(corpus_hashes.items())),
         "embedder": {**embedder.describe(), "dim": int(embedded.vectors.shape[1])},
-        "chunker": chunker_params(),
+        "chunker": chunker_params(paragraphs),
         "n_chunks": len(chunks),
         "files": {CHUNKS_FILE: _sha256(out_dir / CHUNKS_FILE),
                   EMBEDDINGS_FILE: _sha256(out_dir / EMBEDDINGS_FILE)},
@@ -61,7 +62,7 @@ def check_embedder(manifest: dict, embedder) -> None:
             raise IndexMismatch(f"embedder {key} differs: index {built.get(key)!r}, now {now.get(key)!r}")
 
 
-def load_index(out_dir: Path, corpus_hashes: dict[str, str] | None = None):
+def load_index(out_dir: Path, corpus_hashes: dict[str, str] | None = None, paragraphs: bool = False):
     """(chunks frame, embeddings, manifest); raises IndexMismatch on any inconsistency."""
     manifest = json.loads((out_dir / MANIFEST_FILE).read_text(encoding="utf-8"))
     for name, expected in manifest["files"].items():
@@ -69,7 +70,7 @@ def load_index(out_dir: Path, corpus_hashes: dict[str, str] | None = None):
             raise IndexMismatch(f"{name} does not match the index manifest")
     if corpus_hashes is not None and manifest["corpus"] != dict(sorted(corpus_hashes.items())):
         raise IndexMismatch("the corpus changed since the index was built; rebuild it")
-    if manifest["chunker"] != chunker_params():
+    if manifest["chunker"] != chunker_params(paragraphs):
         raise IndexMismatch("chunker parameters changed since the index was built; rebuild it")
     frame = pd.read_parquet(out_dir / CHUNKS_FILE)
     embeddings = np.load(out_dir / EMBEDDINGS_FILE)

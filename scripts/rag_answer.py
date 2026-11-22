@@ -16,14 +16,17 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.rag.answer import Answerer, prompt_hashes  # noqa: E402
+from src.rag.answer import Answerer  # noqa: E402
+from src.rag.config import RETRIEVAL, TAU, build_retriever  # noqa: E402
 from src.rag.corpus import PROJECT_ROOT, load_manifest  # noqa: E402
 from src.rag.embed import OllamaEmbedder  # noqa: E402
 from src.rag.index import INDEX_DIR, check_embedder, load_index  # noqa: E402
 from src.rag.llm import OllamaChat  # noqa: E402
 from src.rag.questions import SEEN_QUERIES  # noqa: E402
-from src.rag.retrieve import Retriever  # noqa: E402
+from src.rag.runmeta import fingerprint, ollama_version  # noqa: E402
 
 RUNS_DIR = PROJECT_ROOT / "data" / "rag" / "runs"
 
@@ -42,13 +45,14 @@ def main(argv=None) -> int:
     frame, embeddings, manifest = load_index(INDEX_DIR, hashes)
     embedder = OllamaEmbedder()
     check_embedder(manifest, embedder)
-    retriever = Retriever(frame.chunk_id.tolist(), frame.embed_text.tolist(), embeddings, embedder)
+    retriever = build_retriever(frame, embeddings, embedder)          # the chosen config (src/rag/config.py)
     records = frame.set_index("chunk_id", drop=False).to_dict("index")
     llm = OllamaChat(options={"num_gpu": 0} if args.cpu else None)
-    answerer = Answerer(retriever, llm, records)
+    answerer = Answerer(retriever, llm, records, tau=TAU, k=RETRIEVAL["k"])
 
     run = {"started_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           "llm": llm.describe(), "embedder": embedder.describe(), "prompts": prompt_hashes(),
+           "fingerprint": fingerprint(llm.describe(), embedder.describe(),
+                                      ollama_version(requests.Session()), RETRIEVAL),
            "index": {k: manifest[k] for k in ("created_utc", "corpus", "chunker", "n_chunks", "files")},
            "tau": answerer.tau, "results": []}
     for q in questions:

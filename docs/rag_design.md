@@ -186,6 +186,11 @@ Check: every section in each CFR part's table of contents was found as a heading
 
 - Retrieval returns the top 6 by RRF, plus **`max_cosine`**: the dense cosine of the best chunk in the whole corpus.
 - **The refusal signal is `max_cosine`, never the fused RRF score.** RRF is rank-based, so the top chunk scores high even when nothing is relevant. `max_bm25` is an optional second condition.
+- Further refusals: the model answers `NO_ANSWER`, or the validator fails twice.
+- **Round-1 evidence** (ad-hoc sanity queries, not the dev set):
+  - A question that is not in the corpus (the GDPR breach-notification deadline) scored max_cosine **0.696**.
+  - Answerable questions scored 0.714 (travel rule), 0.784 (CTR), 0.811 and 0.829 (SAR).
+  - The margin is narrow, so the retrieval gate alone will be weak, and the model-level `NO_ANSWER` matters.
 - **τ rule, current (user decision 2026-11-23; replaces the rule below):** τ is set on the dev set only, using the dense max_cosine of the chosen retrieval configuration.
   - If every answerable dev question scores above every unanswerable one, τ = the midpoint between the lowest answerable and the highest unanswerable value.
   - **If no τ separates them, τ is disabled (None).** Refusal then relies on `NO_ANSWER` and the validator, and this is recorded.
@@ -238,11 +243,46 @@ Check: every section in each CFR part's table of contents was found as a heading
 - The glossary's author also wrote all 42 questions. Some triggers ("cash", "wire", "CTR", "SAR", "travel rule") occur in test questions.
 - The entries are standard AML jargon, not test answers. Even so, a gain from the glossary on the test set should be read with this caveat.
 - "travel rule" is also the wording of seen dev query D03.
-- Further refusals: the model answers `NO_ANSWER`, or the validator fails twice.
-- **Round-1 evidence** (ad-hoc sanity queries, not the dev set):
-  - A question that is not in the corpus (the GDPR breach-notification deadline) scored max_cosine **0.696**.
-  - Answerable questions scored 0.714 (travel rule), 0.784 (CTR), 0.811 and 0.829 (SAR).
-  - The margin is narrow, so the retrieval gate alone will be weak, and the model-level `NO_ANSWER` matters.
+
+### 6b. Round-4 results on dev (2026-11-23)
+
+**Fixes from the round-3 smoke test.** Each one is backed by dev evidence:
+
+| # | Change | Dev evidence |
+|---|---|---|
+| a | Each numbered excerpt is shown as `[n] <document> — <section title>` (`chunk.source_label`), for example `[2] 31 CFR § 1010.330 — Reports relating to currency in excess of $10,000 received in a trade or business`. The system prompt gets rule 3: apply a rule only to the situation its document and section cover. | The D02 smoke answer applied the § 1010.330 Form 8300 foreign-currency exception to bank CTRs |
+| b | The mechanical check now also covers number words (two…ninety, hundred, thousand, million; "one" is excluded as mostly a pronoun) and amount qualifiers as classes: > ("more than", "over", "in excess of", "exceeding", "above"), ≥ ("at least", "or more"), < and ≤. A bare amount fails when the cited text only ever qualifies it. | D02 smoke "The threshold is $10,000" against "more than $10,000"; D05 "five years" was unchecked |
+| c | Every eval run record carries a fingerprint (`src/rag/runmeta.py`): the Ollama version, LLM and embedder digests, LLM options, prompt hashes, SHA-256 of the index manifest and of questions.jsonl, and the retrieval config. **If any of these changes before the test run, the dev evaluation is re-run.** | — |
+
+**Retrieval selection** (`scripts/rag_select_retrieval.py`, record `data/rag/runs/selection_20261122T210322Z.json`):
+
+| Candidate | Recall@6 on 8 answerable dev questions | Misses |
+|---|---|---|
+| BM25 only | 5/8 | D02, D06, D09 |
+| **Dense only** | **7/8** | D03 |
+| Hybrid RRF | 7/8 | D03 |
+| Hybrid + glossary | 7/8 | D06 |
+| Hybrid + paragraphs | 7/8 | D03 |
+
+- **Chosen: dense only** (`src/rag/config.py`). Four candidates tie at 7/8, and the tie goes to the simplest.
+- **τ is disabled.** Dev max_cosine does not separate the two groups: the lowest answerable is 0.6599 (D08) and the highest unanswerable is 0.7233 (D04). Refusal relies on `NO_ANSWER` and the validator.
+
+**Full dev evaluation** (`scripts/rag_eval.py`, record `data/rag/runs/eval_dev_20261122T210528Z.json`, Ollama 0.40.17, llama3.1 `46e0c10c…`):
+
+| Metric | Result |
+|---|---|
+| Recall@6 | 7/8 |
+| Answerable questions answered | 8/8 (0 false refusals) |
+| Correct refusals | 4/4 |
+| Citation correctness | 7/8 |
+| Raw citation validity | 33/33 = 1.000 |
+| **Mechanical check** | **9/10 = 0.900** |
+
+**Rule C4 is triggered by the mechanical check (0.900 < 0.95).**
+- The one failing sentence is D03 (travel rule). Retrieval missed § 1010.410, so the model described the rule from § 1010.440 (a definition, "Person outside the United States"). It stated "$3,000 or more", which is not in the cited text.
+- This is a wrong answer that the check caught. Citation correctness also counts D03 as a miss.
+- **Per the user's instruction, work stopped here, before any model pull, to ask the user.**
+- Not frozen, not pushed.
 
 ## 7. Question set
 

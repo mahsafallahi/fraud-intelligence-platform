@@ -26,6 +26,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--fake", action="store_true", help="use the FakeEmbedder")
     parser.add_argument("--out", type=Path, default=INDEX_DIR)
+    parser.add_argument("--paragraphs", action="store_true",
+                        help="round-4 candidate: CFR chunks never cross a paragraph (a), (b), ...")
     args = parser.parse_args(argv)
 
     chunks, hashes, stats = [], {}, []
@@ -39,7 +41,7 @@ def main(argv=None) -> int:
             print(f"STOP: {path.name} SHA-256 {actual} != manifest {doc['sha256']}", file=sys.stderr)
             return 1
         sections, pages, toc = load_document(doc["doc_id"], path)
-        doc_chunks = chunk_sections(sections)
+        doc_chunks = chunk_sections(sections, paragraphs=args.paragraphs)
         stripped = collections.Counter()
         for page in pages:
             for key, value in page.stripped.items():
@@ -51,7 +53,7 @@ def main(argv=None) -> int:
         hashes[doc["doc_id"]] = actual
 
     embedder = FakeEmbedder() if args.fake else OllamaEmbedder()
-    manifest = build_index(chunks, embedder, args.out, hashes)
+    manifest = build_index(chunks, embedder, args.out, hashes, paragraphs=args.paragraphs)
 
     import pandas as pd
     frame = pd.read_parquet(args.out / "chunks.parquet")

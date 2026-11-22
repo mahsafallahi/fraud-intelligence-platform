@@ -53,19 +53,33 @@ def rrf_fuse(rank_maps: list[dict[int, int]], k: int = RRF_K) -> dict[int, float
     return fused
 
 
+MODES = ("hybrid", "dense", "bm25")
+
+
 class Retriever:
+    """mode: "hybrid" (dense + BM25, RRF), "dense" or "bm25" (round-4 selection candidates).
+
+    `expand` optionally rewrites the query before both retrievers (the glossary candidate).
+    max_cosine is always the dense similarity of the raw-or-expanded query, whatever the mode.
+    """
+
     def __init__(self, chunk_ids: list[str], embed_texts: list[str], embeddings: np.ndarray, embedder,
-                 rrf_k: int = RRF_K):
+                 rrf_k: int = RRF_K, mode: str = "hybrid", expand=None):
         if len(chunk_ids) != len(embed_texts) or len(chunk_ids) != embeddings.shape[0]:
             raise ValueError("chunk ids, texts and embeddings differ in length")
+        if mode not in MODES:
+            raise ValueError(f"mode must be one of {MODES}")
         self.chunk_ids, self.embeddings, self.embedder, self.rrf_k = chunk_ids, embeddings, embedder, rrf_k
+        self.mode, self.expand = mode, expand
         self.bm25 = BM25(embed_texts)
 
     def search(self, query: str, k: int = TOP_K) -> Retrieval:
-        cos = self.embeddings @ self.embedder.embed_query(query)
-        bm = self.bm25.scores(query)
+        text = self.expand(query) if self.expand else query
+        cos = self.embeddings @ self.embedder.embed_query(text)
+        bm = self.bm25.scores(text)
         dense_r, bm_r = ranks(cos), ranks(bm, eligible=bm > 0)
-        fused = rrf_fuse([dense_r, bm_r], self.rrf_k)
+        lists = {"hybrid": [dense_r, bm_r], "dense": [dense_r], "bm25": [bm_r]}[self.mode]
+        fused = rrf_fuse(lists, self.rrf_k)
         order = sorted(fused, key=lambda i: (-fused[i], i))[:k]
         hits = [Hit(self.chunk_ids[i], n, fused[i], float(cos[i]), float(bm[i]), dense_r[i], bm_r.get(i))
                 for n, i in enumerate(order, start=1)]
