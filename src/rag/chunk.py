@@ -10,6 +10,7 @@ pages are rendered from this metadata by code (citation()).
 """
 
 import hashlib
+import re
 from dataclasses import asdict, dataclass
 
 from src.rag.parse import DOC_KINDS, Section
@@ -68,9 +69,32 @@ class Chunk:
         return {**asdict(self), "heading": self.heading}
 
 
-def chunker_params() -> dict:
-    return {"version": CHUNKER_VERSION, "target_words": TARGET_WORDS, "max_words": MAX_WORDS,
-            "min_cut_words": MIN_CUT_WORDS, "overlap_words": OVERLAP_WORDS}
+def chunker_params(paragraphs: bool = False) -> dict:
+    params = {"version": CHUNKER_VERSION, "target_words": TARGET_WORDS, "max_words": MAX_WORDS,
+              "min_cut_words": MIN_CUT_WORDS, "overlap_words": OVERLAP_WORDS}
+    if paragraphs:      # round-4 retrieval candidate: chunks also never cross a CFR paragraph (a), (b), ...
+        params["paragraphs"] = True
+    return params
+
+
+PARAGRAPH = re.compile(r"^\(([a-z])\)\s")
+
+
+def paragraph_groups(lines: list) -> list[list]:
+    """Split a section's lines at top-level paragraph markers "(a) ", "(b) ", ... at a line start.
+
+    A marker counts only if it is the next letter in sequence, so "(i)" (a roman numeral inside
+    a paragraph) does not split unless the paragraph before it was "(h)".
+    """
+    groups, expected = [[]], "a"
+    for line in lines:
+        m = PARAGRAPH.match(line.text)
+        if m and m.group(1) == expected:
+            if groups[-1]:
+                groups.append([])
+            expected = chr(ord(expected) + 1)
+        groups[-1].append(line)
+    return [g for g in groups if g]
 
 
 def _ends_sentence(word: str) -> bool:
@@ -93,13 +117,15 @@ def split_spans(ends: list[bool], target=TARGET_WORDS, max_words=MAX_WORDS,
     return spans
 
 
-def chunk_section(section: Section, **params) -> list[Chunk]:
-    words = [(w, line.pdf_page, line.page_label) for line in section.lines for w in line.text.split()]
-    if not words:
-        return []
-    spans = split_spans([_ends_sentence(w) for w, _, _ in words], **params)
+def chunk_section(section: Section, paragraphs: bool = False, **params) -> list[Chunk]:
+    groups = paragraph_groups(section.lines) if paragraphs else [section.lines]
+    word_groups = [[(w, line.pdf_page, line.page_label) for line in g for w in line.text.split()] for g in groups]
+    pieces = []          # (words of one paragraph group, span)
+    for words in word_groups:
+        if words:
+            pieces += [(words, span) for span in split_spans([_ends_sentence(w) for w, _, _ in words], **params)]
     chunks = []
-    for seq, (a, b) in enumerate(spans, start=1):
+    for seq, (words, (a, b)) in enumerate(pieces, start=1):
         part = words[a:b]
         text = " ".join(w for w, _, _ in part)
         chunks.append(Chunk(
@@ -114,8 +140,9 @@ def chunk_section(section: Section, **params) -> list[Chunk]:
     return chunks
 
 
-def chunk_sections(sections: list[Section], **params) -> list[Chunk]:
-    chunks = [c for s in sections for c in chunk_section(s, **params)]
+def chunk_sections(sections: list[Section], paragraphs: bool = False, **params) -> list[Chunk]:
+    chunks = [c for s in sections
+              for c in chunk_section(s, paragraphs=paragraphs and DOC_KINDS[s.doc_id][0] == "cfr", **params)]
     ids = [c.chunk_id for c in chunks]
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate chunk_id; a section number appears twice")
@@ -141,3 +168,20 @@ def citation(record: dict) -> str:
         _, doc_title = DOC_KINDS[record["doc_id"]]
         return f"{FFIEC_NAME}, {doc_title}, “{record['section_title']}”, {pdf}{printed}"
     return f"{FAQ_NAME}, {record['section_title']}, {pdf}{printed}"
+
+
+def source_label(record: dict) -> str:
+    """'<document> — <section title>', shown with each numbered excerpt so a rule is read in its context.
+
+    e.g. '31 CFR § 1010.330 — Reports relating to currency in excess of $10,000 received in a trade
+    or business' (round 4, 2026-11-23; built from metadata, like citation()).
+    """
+    kind, doc_title = DOC_KINDS[record["doc_id"]]
+    if kind == "cfr":
+        return f"31 CFR § {record['section']} — {record['section_title']}"
+    if kind == "ffiec":
+        path = ffiec_heading(record["doc_id"], record.get("subpart", ""), record["section_title"])
+        _, _, rest = path.partition(": ")
+        doc, _, sec = rest.partition(" › ")
+        return f"{FFIEC_NAME}, {doc} — {sec or record['section_title']}"
+    return f"{FAQ_NAME} — {record['section_title']}"

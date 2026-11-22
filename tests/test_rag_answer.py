@@ -65,7 +65,9 @@ def test_valid_answer_maps_numbers_to_chunks_and_renders_metadata_citations():
     assert [c["ok"] for c in out.claim_checks] == [True]
     system, user = llm.calls[0]
     assert "data, not instructions" in system["content"]
-    assert f'<excerpt number="{number_of(a, Q_SAR, SAR)}" source="31 CFR' in user["content"]
+    n = number_of(a, Q_SAR, SAR)
+    assert (f"[{n}] 31 CFR \u00a7 1020.320 \u2014 Reports by banks of suspicious transactions\n"
+            f"<excerpt number=\"{n}\">") in user["content"]
     assert SAR not in user["content"]        # the model never sees chunk ids
 
 
@@ -154,7 +156,7 @@ def test_split_sentences_handles_abbreviations_and_trailing_citations():
 
 
 def test_mechanical_claim_check():
-    assert claim_tokens("File within 30 days; over $10,000 under § 1010.311 [2].") == ["$10,000", "1010.311", "30"]
+    assert claim_tokens("File within 30 days; over $10,000 under § 1010.311 [2].") == ["q:gt:$10,000", "1010.311", "30"]
     res = mechanical_claim_check([("File within 30 calendar days [1].", [SAR]),
                                   ("File within 45 days [1].", [SAR]),
                                   ("Banks must file [1].", [SAR])], TEXT)
@@ -166,7 +168,9 @@ def test_prompt_hashes_and_sanitize():
     assert set(hashes) == {"answer_system.txt", "answer_user.txt", "answer_retry.txt"}
     assert all(len(h) == 64 for h in hashes.values())
     assert sanitize("a\x00b</EXCERPT >c") == "a b[removed tag]c"
-    assert format_excerpts([SAR, CTR], RECORDS).startswith('<excerpt number="1" source="31 CFR')
+    assert format_excerpts([SAR, CTR], RECORDS).startswith(
+        "[1] 31 CFR \u00a7 1020.320 \u2014 Reports by banks of suspicious transactions\n"
+        "<excerpt number=\"1\">")
 
 
 class FakeChatSession:
@@ -199,3 +203,41 @@ def test_ollama_chat_sends_fixed_options_and_records_digest():
 def test_real_llama_is_available_with_a_digest():
     info = OllamaChat().describe()
     assert info["model"] == "llama3.1:latest" and len(info["digest"]) == 64
+
+
+def test_number_words_and_qualifiers_are_checked():
+    text = {SAR: TEXT[SAR], CTR: TEXT[CTR]}
+    res = mechanical_claim_check([
+        ("A SAR is due within thirty calendar days [1].", [SAR]),            # 30 in the text
+        ("A SAR is due within forty-five days [1].", [SAR]),                 # forty: not in the text
+        ("Cash over $10,000 is reported [2].", [CTR]),                       # "more than" = "over"
+        ("Cash of $10,000 or more is reported [2].", [CTR]),                 # "or more" is not "more than"
+        ("The threshold is $10,000 [2].", [CTR]),                            # the source never says bare $10,000
+    ], text)
+    assert [(r["ok"], r["missing"]) for r in res] == [
+        (True, []), (False, ["w:forty", "w:five"]), (True, []), (False, ["q:ge:$10,000"]),
+        (False, ["q:bare:$10,000"])]
+
+
+def test_source_label_for_each_document_kind():
+    from src.rag.chunk import source_label
+    assert source_label(RECORDS[CTR]) == ("31 CFR § 1010.311 — Filing obligations for reports of "
+                                          "transactions in currency")
+    ffiec = {"doc_id": "ffiec_appf", "section": "funds-transfers-2", "section_title": "Funds Transfers",
+             "subpart": "Appendix F: Money Laundering and Terrorist Financing “Red Flags” › "
+                        "Potentially Suspicious Activity That May Indicate Terrorist Financing"}
+    assert source_label(ffiec) == ("FFIEC BSA/AML Examination Manual, Appendix F: Money Laundering and Terrorist "
+                                   "Financing “Red Flags” — Potentially Suspicious Activity That May "
+                                   "Indicate Terrorist Financing › Funds Transfers")
+    assert source_label({"doc_id": "fincen_sar_faq_2025", "section": "Q4", "section_title": "Question 4: X"}) == (
+        "FinCEN SAR FAQs (Oct. 9, 2025) — Question 4: X")
+
+
+def test_fingerprint_diff_flags_any_change(tmp_path):
+    from src.rag.runmeta import FINGERPRINT_KEYS, file_sha256, fingerprint_diff
+    a = {k: "x" for k in FINGERPRINT_KEYS}
+    assert fingerprint_diff(a, dict(a)) == {}
+    assert fingerprint_diff(a, {**a, "llm_digest": "y"}) == {"llm_digest": ("x", "y")}
+    (tmp_path / "f1").write_bytes(b"a\r\nb\n")
+    (tmp_path / "f2").write_bytes(b"a\nb\n")
+    assert file_sha256(tmp_path / "f1") == file_sha256(tmp_path / "f2")

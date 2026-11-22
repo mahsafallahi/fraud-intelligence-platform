@@ -91,25 +91,72 @@ def validate(answer: str, excerpt_ids: list[str], chunk_text: dict[str, str]) ->
     return Validation(not errors, errors, cited, sentences)
 
 
+# round 4 (2026-11-23): number words and amount qualifiers are claims too
+NUMBER_WORDS = {
+    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
+    "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100, "thousand": 1000, "million": 1000000,
+}   # "one" is left out: it is mostly a pronoun ("one or more", "no one")
+NUMBER_WORD = re.compile(r"\b(" + "|".join(NUMBER_WORDS) + r")\b", re.I)
+QUALIFIER_CLASS = {
+    "more than": "gt", "over": "gt", "in excess of": "gt", "exceeding": "gt", "above": "gt", "greater than": "gt",
+    "at least": "ge", "not less than": "ge", "or more": "ge", "or greater": "ge",
+    "less than": "lt", "under": "lt", "below": "lt",
+    "up to": "le", "no more than": "le", "not more than": "le", "not exceeding": "le", "or less": "le",
+}
+_PRE = "|".join(sorted((q for q in QUALIFIER_CLASS if not q.startswith("or ")), key=len, reverse=True))
+_POST = "|".join(q for q in QUALIFIER_CLASS if q.startswith("or "))
+QUALIFIED_AMOUNT = re.compile(rf"(?:\b({_PRE})\s+)?(\$\s?\d[\d,]*(?:\.\d+)?)(?:\s+({_POST})\b)?", re.I)
+
+
+def qualified_amounts(text: str) -> list[tuple[str, str]]:
+    """[(amount, class)] for every dollar amount; class is gt/ge/lt/le, or "bare" with no qualifier."""
+    out = []
+    for m in QUALIFIED_AMOUNT.finditer(text):
+        q = (m.group(1) or m.group(3) or "").lower()
+        out.append((m.group(2).replace(" ", ""), QUALIFIER_CLASS.get(q, "bare")))
+    return out
+
+
 def claim_tokens(sentence: str) -> list[str]:
-    """Numbers, dollar amounts, day counts and section references in a sentence (citations removed)."""
+    """Claims to check in a sentence (citations removed): dollar amounts with their qualifier class
+    ("q:gt:$10,000", "q:bare:$10,000"), section references, digits, and number words ("w:five")."""
     text = NUM_CITE.sub(" ", sentence)
-    tokens = [d.replace(" ", "") for d in DOLLARS.findall(text)]
+    tokens = [f"q:{cls}:{amt}" for amt, cls in qualified_amounts(text)]
     text = DOLLARS.sub(" ", text)
     tokens += SECTION_REF.findall(text)
     text = SECTION_REF.sub(" ", text)
     tokens += NUMBER.findall(text)
+    tokens += [f"w:{w.lower()}" for w in NUMBER_WORD.findall(text)]
     return tokens
 
 
+def token_supported(token: str, text: str) -> bool:
+    """Whether a claim token is backed by `text` (the cited chunks)."""
+    if token.startswith("q:"):
+        _, cls, amount = token.split(":", 2)
+        found = [c for a, c in qualified_amounts(text) if a == amount]
+        if not found:
+            return False
+        if cls == "bare":     # a bare amount is wrong when the source always qualifies it
+            return "bare" in found
+        return cls in found
+    if token.startswith("w:"):
+        word = token[2:]
+        return (re.search(rf"\b{word}\b", text, re.I) is not None
+                or contains_token(text, str(NUMBER_WORDS[word])))
+    return contains_token(text, token)
+
+
 def mechanical_claim_check(sentences: list[tuple[str, list[str]]], chunk_text: dict[str, str]) -> list[dict]:
-    """Option B: for each sentence with claim tokens, whether every token occurs in a cited chunk."""
+    """Option B: for each sentence with claim tokens, whether every token is backed by a cited chunk."""
     results = []
     for sentence, ids in sentences:
         tokens = claim_tokens(sentence)
         if not tokens:
             continue
         texts = " ".join(chunk_text.get(i, "") for i in ids)
-        missing = [t for t in tokens if not contains_token(texts, t)]
+        missing = [t for t in tokens if not token_supported(t, texts)]
         results.append({"sentence": sentence, "tokens": tokens, "missing": missing, "ok": not missing})
     return results

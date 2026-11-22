@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.rag.chunk import citation
+from src.rag.chunk import citation, source_label
 from src.rag.citations import NUM_CITE, Validation, mechanical_claim_check, numbers_in, validate
 
 PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
@@ -41,11 +41,15 @@ def sanitize(text: str) -> str:
 
 
 def format_excerpts(chunk_ids: list[str], records: dict[str, dict]) -> str:
-    """Excerpt n (1-based) is chunk_ids[n-1]; the model cites it as [n] and never sees chunk ids."""
+    """Excerpt n (1-based) is chunk_ids[n-1], shown as "[n] <document> — <section>" and its text.
+
+    The model cites [n] and never sees chunk ids. The label (round 4) tells it which rule
+    and which kind of institution the text is about.
+    """
     blocks = []
     for n, cid in enumerate(chunk_ids, start=1):
         rec = records[cid]
-        blocks.append(f'<excerpt number="{n}" source="{sanitize(rec["heading"])}">\n'
+        blocks.append(f"[{n}] {sanitize(source_label(rec))}\n<excerpt number=\"{n}\">\n"
                       f"{sanitize(rec['text'])}\n</excerpt>")
     return "\n\n".join(blocks)
 
