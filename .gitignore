@@ -46,3 +46,5 @@ mlflow.db
 data/rag/raw/
 data/rag/index/
 data/rag/runs/
+# Phase 7 agent cases (card tokens, merchant coordinates) and agent runs: never committed
+data/agent/

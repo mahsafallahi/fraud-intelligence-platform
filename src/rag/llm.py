@@ -62,14 +62,16 @@ class FakeLLM:
     def __init__(self, replies):
         self.replies = list(replies)
         self.calls: list[list[dict]] = []
+        self.tools_seen: list = []
 
     def chat(self, messages: list[dict], tools: list | None = None) -> Reply:
         self.calls.append([dict(m) for m in messages])
+        self.tools_seen.append(tools)
         if not self.replies:
             raise AssertionError("FakeLLM: no scripted reply left")
         reply = self.replies.pop(0)
-        content = reply(messages) if callable(reply) else reply
-        return Reply(content=content)
+        out = reply(messages) if callable(reply) else reply
+        return out if isinstance(out, Reply) else Reply(content=out)   # a Reply can carry tool_calls
 
     def describe(self) -> dict:
         return {"name": self.name, "model": "scripted", "digest": None, "options": {}}
