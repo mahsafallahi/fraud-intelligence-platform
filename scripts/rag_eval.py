@@ -23,7 +23,7 @@ from src.rag.config import RETRIEVAL, TAU, build_retriever  # noqa: E402
 from src.rag.corpus import PROJECT_ROOT, load_manifest  # noqa: E402
 from src.rag.embed import OllamaEmbedder  # noqa: E402
 from src.rag.index import INDEX_DIR, check_embedder, load_index  # noqa: E402
-from src.rag.llm import OllamaChat  # noqa: E402
+from src.rag.llm import DEFAULT_MODEL, OllamaChat  # noqa: E402
 from src.rag.questions import QUESTIONS, load_questions  # noqa: E402
 from src.rag.runmeta import fingerprint, ollama_version  # noqa: E402
 
@@ -43,8 +43,13 @@ def raw_citations(reply: str, k: int) -> tuple[int, int]:
     return valid, total
 
 
-def main() -> int:
-    if "--split" in sys.argv and "test" in sys.argv:
+def main(argv=None) -> int:
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Ollama chat model (rule C4 comparison)")
+    parser.add_argument("--split", default="dev", choices=["dev", "test"])
+    args = parser.parse_args(argv)
+    if args.split == "test":
         print("STOP: the test run is not approved; this script evaluates dev only", file=sys.stderr)
         return 2
     hashes = {d["doc_id"]: d["sha256"] for d in load_manifest()["documents"]}
@@ -53,7 +58,7 @@ def main() -> int:
     check_embedder(manifest, embedder)
     records = frame.set_index("chunk_id", drop=False).to_dict("index")
     section_of = {cid: f"{r['doc_id']}:{r['section']}" for cid, r in records.items()}
-    llm = OllamaChat()
+    llm = OllamaChat(model=args.model)
     answerer = Answerer(build_retriever(frame, embeddings, embedder), llm, records, tau=TAU, k=RETRIEVAL["k"])
     fp = fingerprint(llm.describe(), embedder.describe(), ollama_version(requests.Session()), RETRIEVAL)
 
@@ -105,7 +110,7 @@ def main() -> int:
              else "C4 TRIGGERED: qwen2.5 would be needed; STOP and ask before any pull"))
 
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    path = RUNS_DIR / f"eval_dev_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
+    path = RUNS_DIR / f"eval_dev_{args.model.split(':')[0]}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
     path.write_text(json.dumps({"fingerprint": fp, "tau": TAU, "totals": totals, "c4_rag": c4_rag,
                                 "rows": rows}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"record: {path.relative_to(PROJECT_ROOT)}")
