@@ -294,6 +294,24 @@ Check: every section in each CFR part's table of contents was found as a heading
 - **If both models fail C4 on dev, the model with the higher mechanical-check rate is chosen.** On a tie, llama3.1 stays.
 - The C4 failure is then reported as a **known limitation** in the pre-registration and in the results.
 
+### 6c. Decisions before any agent run (user, 2026-11-24)
+
+`qwen2.5:7b-instruct` was pulled by the user (third attempt). Digest
+`845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e`, 4,683,087,332 bytes, Q4_K_M, 7.6B.
+Ollama is still 0.40.17, as in the llama3.1 dev run.
+
+| # | Decision | Reason | Rejected |
+|---|---|---|---|
+| (a) | **The baseline makes exactly 4 tool calls**: 1 `score_transaction`, `search_regulations` for the top-2 reasons, and one fixed SAR-obligations query that **always** runs. 2 excerpts per search, so at most 6 | A code review before any run found two defects. With 3 reason queries the baseline made up to 5 tool calls, above the pre-registered limit of 4. If those queries returned 6 different excerpts, the loop stopped before the SAR query, so the note had no SAR excerpts | Raising the cap to 5 (it is a pre-registered limit) |
+| (b) | **`scripts/rag_freeze.py` writes the C4 known limitation** when the chosen model fails C4 on dev. It also applies C4 and the tie rule in code, and stops if the two dev runs differ in anything but the model | §6b requires the limitation in the pre-registration; the script did not write it | Writing it by hand (it could be forgotten or differ from the record) |
+
+**Details of (a) not stated in the decision, fixed before any agent run:**
+- "Top-2 reasons" are the first 2, in API order, that have a search query. Masked reasons (`age_band`, `urban`, D5) have none.
+- Two reasons that share a query (such as `hour` and `is_night`) count once.
+- If fewer than 2 queries remain, fixed filler queries complete the 2. The API returns at most 3 reasons and can return fewer.
+
+The freeze also records the SHA-256 of the two **agent** prompt files, because C7 says "every prompt file".
+
 ## 7. Question set
 
 - **42 questions** (C5):
@@ -378,7 +396,7 @@ Check: every section in each CFR part's table of contents was found as a heading
 - A 503 or connection error gives `API UNAVAILABLE`.
 - `alert=false` gives a short "below threshold" note.
 
-**Baseline:** a deterministic workflow (score, then fixed queries from a feature-to-query map, then write) is built alongside the agent. It is the CI path and the comparison point.
+**Baseline:** a deterministic workflow (score, then 2 queries from a feature-to-query map plus the fixed SAR query, exactly 4 tool calls (§6c), then write) is built alongside the agent. It is the CI path and the comparison point.
 
 ## 10. Guardrails
 
@@ -420,7 +438,7 @@ tests/        test_rag_corpus.py test_rag_parse.py test_rag_chunk.py test_rag_em
 | `ollama pull nomic-embed-text` (274 MB, `~/.ollama`) | approved, done |
 | GovInfo + FinCEN download (1.23 MB) | approved, done |
 | FFIEC six sections | user, manual |
-| `ollama pull qwen2.5:7b-instruct` | not approved (only under C4) |
+| `ollama pull qwen2.5:7b-instruct` | approved 2026-11-23 under C4, pulled by the user 2026-11-24 |
 | `ci.yml` change (install requirements-rag.txt, new marker selection) and push | approved 2026-11-20 |
 
 ## 13. Round-1 findings and risks

@@ -1,6 +1,8 @@
 """Deterministic baseline (Phase 7): score -> fixed queries from the reasons -> one writer call.
 
-Code decides every step; the LLM only writes the two text sections. This is the
+Exactly 4 tool calls per alert (decision (a), 2026-11-24): 1 score_transaction, 2
+searches for the top reasons, 1 fixed SAR-obligations search that always runs. Code
+decides every step; the LLM only writes the two text sections. This is the
 reference for the tool-calling agent (src/agent/loop.py) and runs with a FakeLLM in CI.
 """
 
@@ -29,9 +31,12 @@ FEATURE_QUERIES = {
     "is_nationwide_public_holiday": "unusual transaction patterns that may indicate suspicious activity",
     "is_bank_holiday": "unusual transaction patterns that may indicate suspicious activity",
 }
+# used only when the reasons give fewer than 2 different queries (masked, or sharing one query)
+FILLER_QUERIES = ("transaction monitoring for unusual activity",
+                  "unusual transaction patterns that may indicate suspicious activity")
+REASON_QUERIES = 2
 SAR_QUERY = "When must a bank file a suspicious activity report and how should it review alerts?"
-MAX_EXCERPTS = 6
-PER_QUERY = 2
+PER_QUERY = 2            # 3 searches x 2 = at most 6 excerpts
 
 
 @dataclass
@@ -60,12 +65,15 @@ def note_from_score(txn_ref: str, mode: str, score: ScoreResult) -> AnalystNote:
 
 
 def queries_for(reasons: list[dict]) -> list[str]:
+    """Exactly 3 different queries: the top-2 reasons with a query (API order; masked features and
+    repeated queries are skipped, fillers complete the 2), then the SAR query."""
     out = []
     for r in reasons:
         q = FEATURE_QUERIES.get(r["feature"]) if r["feature"] not in MASKED_FEATURES else None
         if q and q not in out:
             out.append(q)
-    return out + [SAR_QUERY]
+    out += [q for q in FILLER_QUERIES if q not in out]
+    return out[:REASON_QUERIES] + [SAR_QUERY]
 
 
 def run_baseline(txn_ref: str, score_tool, retriever, llm, records: dict[str, dict]) -> RunResult:
@@ -80,11 +88,9 @@ def run_baseline(txn_ref: str, score_tool, retriever, llm, records: dict[str, di
     registry = ExcerptRegistry(records)
     search = SearchTool(retriever, registry, k=PER_QUERY)
     for q in queries_for(score.response["reasons"]):
-        if len(registry.ids) >= MAX_EXCERPTS:
-            break
         search(q)
         result.tool_calls += 1
-    ids = registry.ids[:MAX_EXCERPTS]
+    ids = list(registry.ids)
     excerpts = [registry.view(c) for c in ids]
     chunk_text = {c: f"{records[c]['heading']}\n{records[c]['text']}" for c in ids}
     messages = [{"role": "system", "content": load_prompt("writer_system.txt")},

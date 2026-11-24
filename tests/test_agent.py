@@ -10,7 +10,7 @@ from src.agent.context import LLMAlertContext, llm_context, masked_reasons
 from src.agent.loop import MAX_TOOL_CALLS, MAX_TURNS, run_agent
 from src.agent.note import DISCLAIMER, AnalystNote, render_markdown
 from src.agent.tools import ScoreTool
-from src.agent.workflow import queries_for, run_baseline
+from src.agent.workflow import FEATURE_QUERIES, SAR_QUERY, queries_for, run_baseline
 from src.agent.writer import prompt_hashes
 from src.rag.embed import FakeEmbedder
 from src.rag.llm import FakeLLM, Reply
@@ -109,8 +109,38 @@ def test_baseline_alert_note_passes_all_checks():
 
 def test_baseline_queries_skip_masked_features_and_end_with_sar():
     qs = queries_for(API_OK["reasons"])
-    assert qs[-1].startswith("When must a bank file a suspicious activity report")
-    assert len(qs) == 3          # amt, is_night, SAR; age_band has no query
+    assert qs == [FEATURE_QUERIES["amt"], FEATURE_QUERIES["is_night"], SAR_QUERY]   # age_band has no query
+
+
+@pytest.mark.parametrize("features", [
+    ["amt", "category", "distance_km"],        # 3 different queries: only the top 2 are used
+    ["hour", "is_night", "day_of_week"],       # one shared query
+    ["age_band", "urban", "amt"],              # masked
+    ["age_band"], ["category"], [],            # fewer than 3 reasons (the API returns at most 3)
+])
+def test_baseline_always_makes_exactly_4_tool_calls_and_always_runs_the_sar_query(features):
+    reasons = [{"feature": f, "value": 1, "contribution": 0.5} for f in features]
+    qs = queries_for(reasons)
+    assert len(qs) == len(set(qs)) == 3 and qs[-1] == SAR_QUERY
+
+    class API(FakeAPI):
+        def post(self, url, json, timeout):
+            body = {**super().post(url, json, timeout).json(), "reasons": reasons}
+            return type("R", (), {"status_code": 200, "raise_for_status": lambda s: None,
+                                  "json": lambda s: body})()
+
+    class Spy:
+        def __init__(self):
+            self.inner, self.queries = retriever(), []
+
+        def search(self, q, k):
+            self.queries.append(q)
+            return self.inner.search(q, k=k)
+
+    spy = Spy()
+    res = run_baseline("A01", ScoreTool(CASES, session=API()), spy, FakeLLM([GOOD]), RECORDS)
+    assert res.tool_calls == MAX_TOOL_CALLS == 4 and spy.queries == qs
+    assert check_note(res, CASES["A01"], {**API_OK, "reasons": reasons})["limits"]
 
 
 @pytest.mark.parametrize("ref,status", [("U01", "NOT SCORED: unknown_card"), ("D01", "API UNAVAILABLE")])
