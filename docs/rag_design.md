@@ -351,6 +351,20 @@ Record `data/rag/runs/eval_dev_qwen2.5_20261124T195455Z.json`. The fingerprint e
 - Extended terms: `large`, `high-value`, `high-risk`, `hour`, `holiday`, `distance`, `location`, `category`, `in person`.
 - **Limits:** the primary terms were chosen after reading the agent notes, and both lists were written after the notes had been seen. A term that occurs in the chunk does not prove the sentence is supported. The search finds only one kind of unsupported detail.
 
+### 6f. Agent comparison and grounding search (2026-11-24, before the test run; changes no decision)
+
+| Run (same 10 cases) | Mechanical checks | Alert notes with regulatory text | Notes flagged, primary terms | Notes flagged, extended terms |
+|---|---|---|---|---|
+| llama3.1 baseline (recommended) | **10/10, pass** | 8/8 | 0/8 (0/50 sentences) | 0/8 (0/50) |
+| llama3.1 tool-calling agent | 6/10, fail | 4/8 | 4/4 (5/25) | 4/4 (7/25) |
+| qwen2.5 tool-calling agent (comparison only, runs `20261124T200951Z`, `20261124T201104Z`) | 6/10, fail | 4/8 | 1/4 (2/13) | 1/4 (2/13) |
+
+- **The primary and extended columns are separate searches**, each with its own term list (§6e).
+- **qwen2.5 agent failures:** A01 and A05 wrote `NO_SUPPORT [NO_SUPPORT]`, which the validator reads as an uncited sentence. A06 and A08 had uncited sentences.
+- **Passes that are not good notes:** qwen2.5's A02 passes with `NO_SUPPORT [1][2][3]` as its whole regulatory context, so the check accepts a vacuous text. Its A03 and A07 restate transaction amounts that are in no excerpt (mechanical claim check 0/1 each); the claim check is not part of the 10/10 bar.
+- **`NO_SUPPORT` is handled inconsistently by prompt, parser and check.** It was left as it is (decision 3) and is a known limitation.
+- **Reading the baseline's 0:** its notes contain a searched term in only 2 of 50 sentences ("large", supported both times), so the search could hardly find anything there. They are generic (bank systems, staffing, escalation) and mostly not about the transaction. The 0 means "no unsupported transaction detail found", not "fully grounded".
+
 ## 7. Question set
 
 - **42 questions** (C5):

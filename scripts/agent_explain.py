@@ -38,6 +38,7 @@ def main(argv=None) -> int:
     parser.add_argument("--kinds", nargs="+", default=["alert", "unknown_card"])
     parser.add_argument("--api", default="http://127.0.0.1:8000")
     parser.add_argument("--model", required=True, help="the chat model chosen by rule C4")
+    parser.add_argument("--modes", nargs="+", default=["baseline", "agent"], choices=["baseline", "agent"])
     args = parser.parse_args(argv)
     cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]
     hashes = {d["doc_id"]: d["sha256"] for d in load_manifest()["documents"]}
@@ -61,6 +62,8 @@ def main(argv=None) -> int:
             continue
         api_response = tool(ref).response if case["kind"] == "alert" else None   # reference for the checks
         for mode, fn in (("baseline", run_baseline), ("agent", run_agent)):
+            if mode not in args.modes:
+                continue
             res = fn(ref, tool, retriever, llm, records)
             checks = check_note(res, case, api_response)
             md = render_markdown(res.note, records, card_key=case["request"]["card_key"])
@@ -78,7 +81,7 @@ def main(argv=None) -> int:
                   f"{row['seconds']}s")
     (out_dir / "run.json").write_text(json.dumps({"fingerprint": fp, "kinds": args.kinds, "rows": rows},
                                                  indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    for mode in ("baseline", "agent"):
+    for mode in args.modes:
         r = [x for x in rows if x["mode"] == mode]
         print(f"{mode}: {sum(x['passed'] for x in r)}/{len(r)} passed")
     print(f"notes and record: {out_dir.relative_to(PROJECT_ROOT)}")
