@@ -111,8 +111,9 @@ def labels_md(records: list[dict], sample: list[str], skipped: list[str], size: 
              "against the excerpt text next to it, not against your own knowledge and not against other excerpts.", "",
              "- `not supported`: the excerpt does not say it. `contradicted`: the excerpt says the opposite.",
              "- A sentence that is only partly backed is `not supported`.",
-             "- The excerpt is the exact text the model saw (heading, then text). In this file `<br>` is a line break,",
-             "  and `&`, `<` and `|` are written as entities, so that the text fits in a table.", "",
+             "- Each excerpt is: the source line, the chunk heading (what the mechanical check also reads), then the exact",
+             "  chunk text the model saw (the model saw `[n] <document> — <section>` in place of those first two lines).",
+             "  In this file `<br>` is a line break, and `&`, `<` and `|` are written as entities to fit in a table.", "",
              f"Sample (pre-drawn order, the first {size} that were answered): {', '.join(sample)}.",
              f"Refused and replaced by the next in the order: {', '.join(skipped) or 'none'}."
              + ("" if len(sample) == size else f" **Only {len(sample)} were answered.**"), "",
