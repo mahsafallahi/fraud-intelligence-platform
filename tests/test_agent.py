@@ -221,3 +221,22 @@ def test_note_schema_and_prompt_hashes():
         AnalystNote(txn_ref="x", mode="agent", status="MAYBE")
     assert set(prompt_hashes()) == {"writer_system.txt", "agent_system.txt"}
     assert masked_reasons([{"feature": "urban", "value": 1, "contribution": 0.1}])[0]["value"] == "hidden"
+
+
+# ---- grounding search (scripts/agent_grounding_search.py) -----------------------
+
+def test_grounding_search_flags_a_term_missing_from_the_cited_chunk():
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location(
+        "ground", Path(__file__).resolve().parents[1] / "scripts" / "agent_grounding_search.py")
+    g = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(g)
+    md = ("# Analyst note: A01 (agent)\n\n## Why the model flagged it\n1. night-time transaction = 1\n\n"
+          "## Regulatory context\nBanks monitor night activity [1]. Banks monitor online activity [2].\n\n"
+          "## Suggested next steps\nReview it [1].\n\n## Sources\n[1] Doc A, PDF p. 1\n[2] Doc B, PDF p. 2\n\n---\n*x*")
+    assert g.parse_note(md)[1] == {1: "Doc A, PDF p. 1", 2: "Doc B, PDF p. 2"}
+    texts = {"Doc A, PDF p. 1": ["monitoring"], "Doc B, PDF p. 2": ["Online banking"]}
+    hits = g.search_note(md, texts, g.PRIMARY)          # the code-written reasons are not searched
+    assert [t for t, _ in hits] == ["night"]
+    assert g.parse_note("# note\n\n---\n*x*") == ("", {})

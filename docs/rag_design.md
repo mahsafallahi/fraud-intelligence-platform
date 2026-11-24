@@ -331,6 +331,26 @@ Record `data/rag/runs/eval_dev_qwen2.5_20261124T195455Z.json`. The fingerprint e
 - qwen2.5's failing sentence is D02: "The currency transaction report threshold for banks is $10,000". The excerpts say "more than $10,000".
 - **Caveat.** The rates rest on 10 and 7 sentences with one failure each, so the difference is not statistically meaningful; it is a rule-based choice. qwen2.5 writes fewer checkable sentences, so one failure costs it more. On D03 it refused where llama3.1 wrote an unsupported answer. The rule was fixed before the run and is applied as written.
 
+### 6e. Agent result and decisions before the test run (user, 2026-11-24)
+
+**Agent cases with llama3.1** (10 fixed label-free cases; runs `20261124T200017Z` and `20261124T200332Z`, git-ignored): baseline **10/10 (pass)**, tool-calling agent **6/10 (fail)**.
+- A02 and A03: INCOMPLETE, the text had sentences without a citation on both attempts.
+- A01 and A06: the agent wrote `NO_SUPPORT`, so the note has no regulatory text.
+- No PII reached the LLM in any run.
+
+| # | Decision | Detail |
+|---|---|---|
+| 1 | **The freeze is kept: llama3.1 answers the questions** (C4 tie rule, §6b) | Stated plainly: **qwen2.5's dev failure was the milder one.** It dropped the qualifier "more than" (D02), and on D03 it refused. llama3.1's failure was an **unsupported answer** (D03), and D08 has an unsupported advisory sentence. The rule compares rates only, on 10 and 7 sentences, and does not weigh how serious an error is |
+| 2 | **The deterministic baseline is the recommended mode.** The tool-calling agent is reported as failing its bar | C4's agent clause fails too (llama3.1 agent 6/10 < 9/10). The qwen2.5 tool-calling agent is run on the same 10 cases as a **labelled comparison only: whatever its result, this decision does not change** |
+| 3 | **The `NO_SUPPORT` mismatch is kept and reported** | The agent prompt allows `NO_SUPPORT`, but the mechanical check requires regulatory text in an alert note, so a permitted reply counts as a fail. Changing either side after seeing results would be tuning on the outcome |
+| 4 | **The keyword grounding search is run on baseline and agent notes alike** | `scripts/agent_grounding_search.py`; terms below |
+| 5 | **One-time test run approved**, after the frozen fingerprint is verified | Results in `docs/rag_results.md`; nothing changes afterwards; results are pushed only after the user's review |
+
+**Grounding search, fixed before it is run on the baseline notes.** A sentence is flagged when it uses a term that occurs in none of the chunks it cites (heading and text, case-insensitive). A note is flagged when it has at least one flagged sentence.
+- Primary terms, the same as in the first ad-hoc search: `night`, `online`, `merchant`.
+- Extended terms: `large`, `high-value`, `high-risk`, `hour`, `holiday`, `distance`, `location`, `category`, `in person`.
+- **Limits:** the primary terms were chosen after reading the agent notes, and both lists were written after the notes had been seen. A term that occurs in the chunk does not prove the sentence is supported. The search finds only one kind of unsupported detail.
+
 ## 7. Question set
 
 - **42 questions** (C5):
