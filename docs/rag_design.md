@@ -312,6 +312,25 @@ Ollama is still 0.40.17, as in the llama3.1 dev run.
 
 The freeze also records the SHA-256 of the two **agent** prompt files, because C7 says "every prompt file".
 
+### 6d. C4 comparison on dev and model choice (2026-11-24)
+
+Record `data/rag/runs/eval_dev_qwen2.5_20261124T195455Z.json`. The fingerprint equals the llama3.1 run's in everything except the model and its digest (checked by `scripts/rag_freeze.py`).
+
+| Dev metric | llama3.1 | qwen2.5:7b-instruct |
+|---|---|---|
+| Recall@6 (same retrieval) | 7/8 | 7/8 |
+| Answerable questions answered | 8/8 | 7/8 (D03 refused, retrieval had missed it) |
+| Correct refusals | 4/4 | 4/4 |
+| Citation correctness | 7/8 | 7/7 |
+| Raw citation validity | 33/33 = 1.000 | 15/15 = 1.000 |
+| **Mechanical check (C4: ≥ 0.95)** | **9/10 = 0.900, fail** | **6/7 = 0.857, fail** |
+| Scripted tool-call check | not part of this run | 2/2 steps PASS |
+| Total time, 12 questions (GPU) | 77.7 s | 19.4 s |
+
+- **Both models fail C4, so the rule of §6b applies: the higher mechanical rate wins. llama3.1 stays** (0.900 > 0.857). The C4 failure is a known limitation in `docs/rag_preregistration.md`.
+- qwen2.5's failing sentence is D02: "The currency transaction report threshold for banks is $10,000". The excerpts say "more than $10,000".
+- **Caveat.** The rates rest on 10 and 7 sentences with one failure each, so the difference is not statistically meaningful; it is a rule-based choice. qwen2.5 writes fewer checkable sentences, so one failure costs it more. On D03 it refused where llama3.1 wrote an unsupported answer. The rule was fixed before the run and is applied as written.
+
 ## 7. Question set
 
 - **42 questions** (C5):
