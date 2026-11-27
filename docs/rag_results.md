@@ -17,16 +17,56 @@ Model `llama3.1:latest` (`46e0c10c039e`), embeddings `nomic-embed-text` (`0a109f
 | Claim support, mechanical | 13/16 | 0.812 | 0.570 to 0.934 | >= 0.95 | **FAIL** |
 | Correct refusal | 7/8 | 0.875 | 0.529 to 0.978 | >= 7/8 | **pass** |
 | False refusal (lower is better) | 1/22 | 0.045 | 0.008 to 0.218 | <= 2/22 | **pass** |
-| Claim support, human | pending | | | >= 0.90 supported and 0 contradicted | pending the user's labels |
+| Claim support, human (10-question sample) | 26/26, 0 contradicted | 1.000 | 0.871 to 1.000 | >= 0.90 supported and 0 contradicted | **pass** |
 | Agent, mechanical: baseline (recommended mode) | 10/10 | 1.000 | 0.722 to 1.000 | 10/10 | **pass** |
 | Agent, mechanical: tool-calling agent | 6/10 | 0.600 | 0.313 to 0.832 | 10/10 | **FAIL** |
 
 Failed in this run: Citation correctness, Claim support, mechanical (the tool-calling agent failed before it, see `docs/rag_design.md` §6e).
 The verdict compares the observed rate with the threshold. The intervals are wide because the set is small.
 
-## Human claim labels (option B)
+## Human claim audit (option B)
 
-Sample: T02, T07, T15, T08, T20, T04, T22, T10, T13, T19. Refused and replaced: T05. 26 sentences to label in `data/rag/eval/claim_labels.md`.
+| Metric | Result | Rate | Wilson 95% interval | Pre-registered bar | Verdict |
+|---|---|---|---|---|---|
+| Claim support, human | 26/26 supported, 0 not supported, 0 contradicted | 1.00 | 0.871 to 1.000 | >= 0.90 supported and 0 contradicted | **PASS** |
+
+- **Labels:** [`data/rag/eval/claim_labels.md`](../data/rag/eval/claim_labels.md), one per answer sentence.
+- **Evidence:** [`data/rag/eval/claim_labels_evidence.md`](../data/rag/eval/claim_labels_evidence.md). For each sentence it gives the excerpt number the annotator pointed to and that passage, copied verbatim.
+- **Computed by** `scripts/rag_claim_audit.py`, which reads the Label column; nothing was counted by hand. Output:
+
+```
+questions: 10 (T02, T04, T07, T08, T10, T13, T15, T19, T20, T22)
+sentences: 26  labels: {'supported': 26}
+supported: 26/26 = 1.00  contradicted: 0
+bar: >= 0.90 supported and 0 contradicted -> PASS
+```
+
+**Protocol, stated as it happened:**
+- **a) Sample.**
+  - There was a single annotator (Mahsa).
+  - The pre-drawn order (seed 20261121) gave 10 answered test questions: T02, T07, T15, T08, T20, T04, T22, T10, T13 and T19. Together they have 26 answer sentences.
+  - T05 was refused by the system, so it was replaced by the next question in the order, T19.
+- **b) The first pass was discarded.**
+  - The annotator first read the rule as "the sentence must restate the whole excerpt".
+  - The rule was then clarified: everything the sentence claims must be in its cited excerpt, and the excerpt may say more.
+  - She redid all 26 from scratch, one sentence at a time, and gave evidence for each label.
+  - Only the second pass is recorded.
+- **c) The annotator worked from Persian translations.**
+  - The chat assistant (an LLM) wrote a Persian translation of each sentence and excerpt.
+  - The assistant only translated; it did not suggest labels.
+  - **This is a limitation: translation errors could affect labels.** The evidence file points to the English text the labels rest on, so each label can be re-checked against the original.
+- **d) No second annotator,** so there is no inter-annotator agreement. The result is one person's judgement.
+
+**Compared with the mechanical claim check (13/16 = 0.812, FAIL):**
+- The two checks answer different questions and disagree in both directions.
+- **The mechanical check was too strict on numbers copied from the question.** Three sentences failed only because they repeat a number from the question that the excerpt does not contain:
+  - T04 "three" (deposits)
+  - T10 "314" (section 314(b))
+  - T18 "two" (steps)
+- **The human audit labelled the T04 and T10 sentences supported.** T18 is not in the human sample.
+- **The mechanical check was too lenient on a coincidental number.** T26 is unanswerable (card-network chargeback windows). It was answered with "60 days", and the check passed it because "60" occurs in a cited excerpt in an unrelated context. That answer is wrong.
+- Number matching can neither confirm that a sentence is backed nor catch a number taken out of context. That is why the human audit was pre-registered as the claim-support measure for the test sample.
+- **No other test result is changed by this audit.** The mechanical check and citation correctness remain FAIL as reported above.
 
 ## Per question
 

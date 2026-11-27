@@ -365,6 +365,19 @@ Record `data/rag/runs/eval_dev_qwen2.5_20261124T195455Z.json`. The fingerprint e
 - **`NO_SUPPORT` is handled inconsistently by prompt, parser and check.** It was left as it is (decision 3) and is a known limitation.
 - **Reading the baseline's 0:** its notes contain a searched term in only 2 of 50 sentences ("large", supported both times), so the search could hardly find anything there. They are generic (bank systems, staffing, escalation) and mostly not about the transaction. The 0 means "no unsupported transaction detail found", not "fully grounded".
 
+### 6g. Deviations in the human claim audit (option B, 2026-11-27, after the test run)
+
+The audit followed the pre-registered sample and bar (§7, §8). The protocol deviated in three ways, recorded here; the result is in `docs/rag_results.md`.
+
+- **b) The first labelling pass was discarded.**
+  - The annotator first read the rule as "the sentence must restate the whole excerpt".
+  - After the rule was clarified ("everything the sentence claims must be in its cited excerpt; the excerpt may say more"), she redid all 26 sentences from scratch, one at a time, with evidence for each label (`data/rag/eval/claim_labels_evidence.md`).
+  - Only the second pass counts.
+- **c) The labels were made from Persian translations.**
+  - The chat assistant (an LLM) translated each answer sentence and each excerpt into Persian. It only translated and did not suggest labels.
+  - **Limitation:** translation errors could affect labels. The evidence file ties every label to the English excerpt text, so it can be re-checked.
+- **d) There was one annotator and no second one,** so there is no inter-annotator agreement.
+
 ## 7. Question set
 
 - **42 questions** (C5):
