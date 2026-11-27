@@ -567,7 +567,7 @@ retrieval configuration and every test result stay exactly as they are.
 | Tool `score_transaction(card_key, trans_ts, amt, category, merch_lat, merch_long)` | **The Phase 6 scorer in process**: `load_bundle` (hashes verified), `SnapshotStore` (read-only DuckDB), `score_transaction` from `src/api/scoring.py`, validation by the API's own `ScoreRequest` model (no `client_ref`). No HTTP call to the API and no Docker. Returns `model_version`, `raw_score`, `probability_raw`, `probability_calibrated`, `alert`, `threshold` and the top-3 reasons. |
 | Reasons to an LLM client | An MCP client is an LLM, so guardrail D5 (§10) applies: the **values** of `age_band` and `urban` are returned as `"hidden"`; feature name and contribution are unchanged. Everything else equals the API exactly. The server never echoes `card_key`, time, amount or coordinates. |
 | Errors | Returned as **tool errors** (`isError: true`) whose structured content is `{"code": ..., "detail": ...}`, never a stack trace. Codes: the API's `validation_error` (detail = `loc`/`msg`/`type` only, as in the API; pydantic's `input` is dropped), `unknown_card`, `date_outside_calendar`; plus `embedder_unavailable`, `index_mismatch` and `internal_error` (nothing else is said). An unknown tool name is a protocol error (`-32602`). |
-| Privacy (logging) | Mirrors the API rule: one JSON line per tool call on **stderr** (stdout is the protocol channel): `request_id`, tool, status, latency, error code; for scoring also `model_version`, `alert` and the calibrated probability rounded to 3 decimals; for search only `k` and the number of hits. **Never logged:** `card_key`, amount, time, coordinates, query text, excerpt text. Unexpected errors log only the exception type. The SDK's `mcp` loggers are raised to WARNING. A test checks all of this, in process and over real stdio. |
+| Privacy (logging) | Mirrors the API rule: one JSON line per tool call on **stderr** (stdout is the protocol channel): `request_id`, tool, status, latency, error code; for scoring also `model_version`, `alert` and the calibrated probability rounded to 3 decimals; for search only the number of hits. **Never logged:** `card_key`, amount, time, coordinates, query text, excerpt text. Unexpected errors log only the exception type. The SDK's `mcp` loggers are raised to WARNING. A test checks all of this, in process and over real stdio. |
 | Concurrency | Both tools run in a worker thread with a capacity limiter of 1, so the event loop is never blocked and calls are serialised (a DuckDB cursor per call, as in the API). |
 | Tool annotations | `readOnlyHint: true`, `idempotentHint: true`, `openWorldHint: false`. Neither tool can write or send anything. |
 
@@ -591,3 +591,43 @@ the logging rule; an end-to-end test with the SDK's own stdio client. CI uses th
 snapshot and a tiny index built with `FakeEmbedder`. Locally, marker `corpus` (+ `ollama`):
 search returns valid chunk ids of the real index; marker `gold`: `score_transaction` equals the
 in-process API scorer exactly on real test-period rows (no labels used).
+
+### 14a. How to run
+
+```bash
+# once: the extra pins (official MCP SDK)
+.venv/Scripts/python.exe -m pip install -r requirements-mcp.txt
+# prerequisites (local, git-ignored): data/serving/serving.duckdb (scripts/build_serving_snapshot.py)
+# and data/rag/index/ (scripts/rag_build_index.py); Ollama running with nomic-embed-text for search.
+# The server: normally started by the MCP client, not by hand. It reads JSON-RPC on stdin.
+.venv/Scripts/python.exe scripts/mcp_server.py
+# tests: CI selection, then everything local
+.venv/Scripts/python.exe -m pytest tests/test_mcp_server.py -rs -W error -m "not gold and not mlflow and not container and not corpus and not ollama"
+.venv/Scripts/python.exe -m pytest tests/test_mcp_server.py -rs -s
+```
+
+- Startup verifies the bundle hashes, the snapshot schema, the index files, the corpus hashes and
+  the frozen index manifest hash; any failure writes one `startup_failed` JSON line to stderr and
+  the process exits with code 1.
+- `score_transaction` works without Ollama. `search_regulations` without Ollama returns the tool
+  error `embedder_unavailable`.
+- Options (or environment variables): `--bundle-dir` (`BUNDLE_DIR`), `--snapshot` (`SNAPSHOT_PATH`),
+  `--index-dir` (`RAG_INDEX_DIR`). `--embedder fake` exists for the CI tests only: it can serve
+  only an index built with `FakeEmbedder`, since the embedder check rejects it on the real index.
+
+**Example Claude Desktop configuration** (`claude_desktop_config.json`; replace `<project>` with
+the absolute path of this folder; documentation only, not installed by this project):
+
+```json
+{
+  "mcpServers": {
+    "fraud-intelligence": {
+      "command": "<project>\.venv\Scripts\python.exe",
+      "args": ["<project>\scripts\mcp_server.py"]
+    }
+  }
+}
+```
+
+The client starts the process itself, so the server inherits no shell state; every path it needs
+is resolved from the project folder, not from the working directory.
