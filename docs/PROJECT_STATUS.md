@@ -1,7 +1,7 @@
 # Fraud Intelligence Platform — Project Status
 
-**Last updated:** 2026-11-20
-**Current step:** Phase 6 complete. Next: Phase 7 — RAG over AML regulations with faithfulness evaluation + agent
+**Last updated:** 2026-11-27
+**Current step:** Phase 7 finishing: push the results commits, then the MCP server (exposing `score_transaction` and `search_regulations`)
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
 
@@ -23,8 +23,9 @@ An end-to-end financial fraud detection platform that demonstrates both **Data E
 | 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | ✅ Complete (2026-11-11): final model F, SHAP, calibration, ranking decision, fairness audit, XGBoost check, one-time test evaluation; results in `docs/model_results.md` |
 | 5 | Causal inference on fraud risk drivers | Data Science | ✅ Complete (2026-11-12): A/B experiment design for step-up verification (power, CUPED, A/A, peeking, break-even, simulated experiments) and observational methods (matching, IPW, doubly robust) against a known truth; all effects SIMULATED; `notebooks/05_causal.ipynb`, `docs/experiment_design.md`, `docs/decision_memo.md` |
 | 6 | FastAPI service, Docker, CI/CD | MLOps | ✅ Complete (2026-11-19): scoring API for model F (`src/api`, bundle in `models/F`), Docker image, GitHub Actions CI; design and parity results in `docs/api_design.md`; first CI run green: [run 44603557588](https://github.com/mahsafallahi/fraud-intelligence-platform/actions/runs/44603557588) |
-| 7 | RAG over AML regulations and an agentic decision layer | GenAI | ⬜ Not started |
-| 8 | Dashboard, deployment, documentation | All | ⬜ Not started |
+| 7 | RAG over AML regulations and an agentic decision layer | GenAI | 🟡 In progress: corpus (9 US public-domain documents, 344 chunks), retrieval (dense, chosen on dev), answering with validated citations, alert agent (deterministic baseline 10/10, tool-calling agent 6/10), one-time test run done (2026-11-24; recall@6 19/22 pass, citation correctness and mechanical claim check FAIL), human claim audit 26/26 PASS + post-hoc LLM rater 2 20/26; pending: push of the results, MCP server exposing `score_transaction` and `search_regulations` (planned, end of Phase 7); design in `docs/rag_design.md`, results in `docs/rag_results.md` |
+| 8 | Dashboard and replay: hand-written SQL, time-to-detection, Power BI with a state risk map, replay on a simulated clock with delayed labels, alert queue with feedback, what-if page, fairness monitoring, red-teaming the fraud model (simulated fraudster shifts to daytime, splits amounts, picks low-risk categories; measure recall drop), champion/challenger in shadow mode during the replay, promotion by a pre-registered rule | All | ⬜ Not started |
+| 9 | Secure public deployment of the AI assistant (per-user keys, rate limits, monitoring, prompt-injection red-team set, security doc) + final showcase package (model card, datasheet, demo video, README, LinkedIn post); customer-facing decline message only if time allows | MLOps / LLMOps / security | ⬜ Not started |
 
 Each phase ends with its own commit, e.g. `Phase 1: ...`.
 
@@ -157,6 +158,7 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 | Phase 5 decision rule: ship only with no SRM, total loss (fraud + 1.0 × abandoned legit $) lower with a 95% interval above 0, and no Holm-adjusted guardrail breach | Fraud loss per card stays the single confirmatory primary; the guardrails (lost revenue above 5% of stepped-up legit $, abandonment above 10%) are one-sided harm tests. Written in the notebook before any simulated result. Fixed 92-day horizon (peeking raised false positives to 0.191). |
 | Phase 5 observational methods: semi-synthetic (real covariates, simulated outcome and rollout) | With real outcomes the confounding is weak and inverted (one fraud episode per card), so methods could not be told apart. Each estimator is compared with its own estimand; matching is reported with bias and RMSE only (a naive bootstrap is invalid for matching). No MLflow logging in Phase 5: simulations with fixed seeds; `mlflow.db` checked unchanged. |
 | Expected card count is 999, not 1,000 | Measured, not assumed: 999 distinct `cc_num` in Bronze (983 in the train file plus cards that only appear in the test file). Checks use measured numbers, never round guesses. |
+| Plan additions (decided 2026-11-27): add red-teaming of the fraud model and champion/challenger in shadow mode (Phase 8), model card + datasheet (Phase 9 showcase), MCP server (end of Phase 7); decline message only if time allows; Persian layer and card-merchant network features not planned | Chosen by interview value per unit of time: red-teaming measures robustness under attacker adaptation and champion/challenger shows safe model replacement, both reuse the Phase 8 replay; model card and datasheet are cheap, standard documentation; MCP exposes existing tools to agents with little new code. The Persian layer (weak Persian in the 8B model, uncertain access to Iranian regulations) and network features (unverified hypothesis on this data) carry high feasibility risk for limited time. |
 
 ---
 
@@ -183,6 +185,20 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 ---
 
 ## 9. To-do
+
+Phase 7 (RAG and agent), in progress:
+
+- [ ] MCP server exposing `score_transaction` and `search_regulations` (planned, end of Phase 7)
+
+Phase 8 (dashboard and replay), planned:
+
+- [ ] Red-teaming the fraud model: simulated fraudster shifts to daytime, splits amounts, picks low-risk categories; measure the recall drop
+- [ ] Champion/challenger in shadow mode during the replay, promotion by a pre-registered rule
+
+Phase 9 (secure deployment and showcase), planned:
+
+- [ ] Model card and datasheet in the final showcase package
+- [ ] Customer-facing decline message without leaking detection details (only if time allows)
 
 Phase 4 (fraud models), complete. Validation analysis (steps D–G) on 2026-11-09; one-time test evaluation (step H) on 2026-11-11, pre-registered and pushed first (commit `33212a1`), MLflow run `test_evaluation`:
 
@@ -327,6 +343,12 @@ Local dbt (writes `data/gold/fraud_dev.duckdb`, never `fraud.duckdb`), from `src
 | 2026-11-12 | Phase 5 built in one task: `src/experiments` (design, simulation, observational methods) with 29 tests (302 in total, 0 warnings); notebook 05 run end to end on .venv in 0.7 minutes, reconciliation exact (F test recall 0.8846, per-card loss mean 535.40, 16,251 cards per arm for a 10% effect), full-pipeline A/A false-positive rate 0.050, `mlflow.db` unchanged. SIMULATED results: at threshold 0.02, ship at 1–5% abandonment, don't ship at 10–20% (guardrails); 181,325 cards per arm at a realistic 1% fraud incidence; hidden confounder leaves bias in every adjusted method. Commits `7b13557`, `77da1c4`, `1ab9d61`. |
 | 2026-11-19 | Phase 6 built in one task by Claude Code after my design review (decisions in `docs/api_design.md`): model F served with FastAPI from a plain-file bundle (`models/F/`, committed, SHA-256 manifest, no MLflow or pickle at serving); a read-only serving snapshot from `fraud_dev.duckdb` + Silver home coordinates (`fraud.duckdb` never opened); the unchanged `build_features` per request; Docker image (Python 3.14.6, non-root, 546 MB layers / 168 MB compressed) and a compose service under profile `api`; GitHub Actions CI with actions pinned by SHA (not run yet). Alert rule: raw probability ≥ 0.2940968658 (969 test alerts in 92 days); 1,082 was an offline top-N budget only. Parity on 3,000 real test-period transactions: features and raw log-odds exact in process and in the container, probabilities exact in process and within 1.11e-16 in the container, 0 flag and 0 reason mismatches. Latency p99 71.5 ms in process, 86.3 ms in the container. `calibration.py` imports scikit-learn only for fitting; `FINAL_COLUMNS` moved to `features.py` (re-exported by `train.py`). Tests 302 → 352 (351 passed, 1 container test skipped without `API_URL`; it passed against the running container). Commits `491b915` to `a52f31a`, local only, not pushed. |
 | 2026-11-20 | API tests switched from the custom standard-library ASGI client to FastAPI's standard `TestClient`, which needs `httpx2` 2.16.2 (pinned in `requirements-dev.txt` only, not in `requirements-api.txt`, the lock or the image; new packages httpx2, httpcore2, truststore). Full suite with warnings as errors: 351 passed, 1 skipped (container test without `API_URL`); CI selection 346 passed, 6 deselected. Status fix: "Current step" still said "Next: Phase 6" after Phase 6 was complete; now points to Phase 7, "Last updated" set. Phase 6 CI runs on 2026-11-19 both green ([44603557588](https://github.com/mahsafallahi/fraud-intelligence-platform/actions/runs/44603557588), [44608311293](https://github.com/mahsafallahi/fraud-intelligence-platform/actions/runs/44608311293)). |
+| 2026-11-20 (afternoon) -> 11-21 (~00:21) | Phase 7 round 1, after my design review (decisions D1–D9, corrections C1–C7): `pypdf` 7.1.1 installed and `nomic-embed-text` pulled (approved gates); corpus manifest with pinned SHA-256 (31 CFR Parts 1010 and 1020 from GovInfo, FinCEN SAR FAQs October 2025; FATF out of scope, its terms could not be verified); PDF parsing with header/slug stripping and chunking with page citations (245 chunks); nomic embeddings with task prefixes, our own BM25, RRF hybrid retrieval; `requirements-rag.txt` and CI change (`corpus`/`ollama` markers deselected); pushed, CI run 44746826815 green. Evening: the six FFIEC sections I downloaded by hand were pinned with `--pin`; FFIEC parsing (headings from font size, printed page labels) and a pypdf log allow-list keyed by the file's SHA-256 (index 344 chunks); 42-question eval set drafted by Claude for my review with a mechanical checker; answering with Ollama (llama3.1), citation validator, one retry and a fixed refusal, prompt hashes; smoke test on the 5 seen dev queries found the GDPR refusal defect. Commits `5df3cb0` to `65a9f5a` (17:01–17:13), `2b41890` (23:55), `6e5f35b`, `fe1fcc4`, `c9fdcd3` (00:03–00:21). |
+| 2026-11-21 (evening) -> 11-22 (~00:27) | Phase 7 round 3 on dev: a reply containing NO_ANSWER anywhere is a refusal; numbered excerpt citations mapped back by code; rule C4 uses the mechanical number check on dev. Questions: T28 and T30 replaced, stronger key facts for T12 and T17, every expected source must hold a key fact; review sheet `data/rag/eval/questions_review.md`. Commits `5ac9282`, `4d51e4c` (00:27). |
+| 2026-11-22 (evening) -> 11-23 (~00:43) | I approved the question set (one fix: T05 prohibition fact). Retrieval selection rule and glossary written and committed before any selection run; dense retrieval chosen (recall@6 7/8 on dev, tie to the simplest), τ disabled (dev does not separate). Dev evaluation with llama3.1: mechanical check 9/10, so C4 triggered; tie rule written before the qwen2.5 run. Commits `b529fb2` to `bb1093c` (00:27–00:43). |
+| 2026-11-23 (~10:41) | The `qwen2.5:7b-instruct` pull failed several times (network, DNS). Alert agent and deterministic baseline built and tested with fakes; `rag_eval --model` for the C4 comparison and the freeze script. Commits `6d9bac0`, `5eca498` (10:41). |
+| 2026-11-24 (evening) | Pre-registration frozen (both models fail C4 on dev; llama3.1 stays by the written rule, a known limitation) and pushed with the decisions before the test run (`09e866b`, `7a26462`, CI green). Agent on 10 fixed cases: deterministic baseline 10/10 (recommended mode), tool-calling agent 6/10 (llama3.1), qwen2.5 comparison 6/10. One-time test run at `ddd10a4`: recall@6 19/22 pass, citation validity 75/75 pass, citation correctness 16/21 FAIL, mechanical claim check 13/16 FAIL, correct refusal 7/8, false refusal 1/22. Results in `docs/rag_results.md` (`8e2d5b5`), local only. Commits `324e374` to `8e2d5b5` (23:24–23:50). |
+| 2026-11-25 -> 11-27 | Human claim audit (option B), labelled by me: 26/26 sentences supported, 0 contradicted, PASS; evidence file and audit script; protocol deviations recorded (first pass discarded, Persian translations by the chat assistant, single annotator) (`f1e8d24`, 14:12). Post-hoc LLM second rater, not blind and not pre-registered: 20/26, raw agreement 20/26, kappa not informative; the official verdict is unchanged (`37200d7`, 14:33). Plan update decided: red-teaming and champion/challenger (Phase 8), model card + datasheet (Phase 9 showcase), MCP server (end of Phase 7); decline message only if time allows; Persian layer and card-merchant network features not planned. New Phase 9 row; this status file brought up to date. Commits local, not pushed. |
 
 ---
 
