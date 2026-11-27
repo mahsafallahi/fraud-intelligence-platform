@@ -571,6 +571,8 @@ retrieval configuration and every test result stay exactly as they are.
 | Concurrency | Both tools run in a worker thread with a capacity limiter of 1, so the event loop is never blocked and calls are serialised (a DuckDB cursor per call, as in the API). |
 | Tool annotations | `readOnlyHint: true`, `idempotentHint: true`, `openWorldHint: false`. Neither tool can write or send anything. |
 
+**Trade-off vs D4 (accepted 2026-11-27):** in the agent, `card_key` never reaches the LLM (code looks it up from a `txn_ref`). Through MCP the client LLM supplies the card token as a tool argument, so it **sees the pseudonymised `card_key`**: never a card number (PAN); the response does not echo it, and the logs never contain it. Accepted for a local, user-driven tool; **to be revisited in Phase 9** (public exposure).
+
 **Rejected alternatives:**
 
 | Alternative | Reason |
