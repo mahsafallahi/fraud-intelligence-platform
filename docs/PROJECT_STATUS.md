@@ -1,7 +1,7 @@
 # Fraud Intelligence Platform — Project Status
 
 **Last updated:** 2026-11-27
-**Current step:** Phase 7 finishing: push the results commits, then the MCP server (exposing `score_transaction` and `search_regulations`)
+**Current step:** Next: Phase 8
 
 This file is the single source of truth for where the project stands. It is updated at the end of every working session.
 
@@ -23,7 +23,7 @@ An end-to-end financial fraud detection platform that demonstrates both **Data E
 | 4 | Fraud models: imbalance handling, SHAP, MLflow | Data Science | ✅ Complete (2026-11-11): final model F, SHAP, calibration, ranking decision, fairness audit, XGBoost check, one-time test evaluation; results in `docs/model_results.md` |
 | 5 | Causal inference on fraud risk drivers | Data Science | ✅ Complete (2026-11-12): A/B experiment design for step-up verification (power, CUPED, A/A, peeking, break-even, simulated experiments) and observational methods (matching, IPW, doubly robust) against a known truth; all effects SIMULATED; `notebooks/05_causal.ipynb`, `docs/experiment_design.md`, `docs/decision_memo.md` |
 | 6 | FastAPI service, Docker, CI/CD | MLOps | ✅ Complete (2026-11-19): scoring API for model F (`src/api`, bundle in `models/F`), Docker image, GitHub Actions CI; design and parity results in `docs/api_design.md`; first CI run green: [run 44603557588](https://github.com/mahsafallahi/fraud-intelligence-platform/actions/runs/44603557588) |
-| 7 | RAG over AML regulations and an agentic decision layer | GenAI | 🟡 In progress: corpus (9 US public-domain documents, 344 chunks), retrieval (dense, chosen on dev), answering with validated citations, alert agent (deterministic baseline 10/10, tool-calling agent 6/10), one-time test run done (2026-11-24; recall@6 19/22 pass, citation correctness and mechanical claim check FAIL), human claim audit 26/26 PASS + post-hoc LLM rater 2 20/26; pending: push of the results, MCP server exposing `score_transaction` and `search_regulations` (planned, end of Phase 7); design in `docs/rag_design.md`, results in `docs/rag_results.md` |
+| 7 | RAG over AML regulations and an agentic decision layer | GenAI | ✅ Complete (2026-11-27): corpus (9 US public-domain documents, 344 chunks), retrieval (dense, chosen on dev), answering with validated citations, alert agent (deterministic baseline 10/10, tool-calling agent 6/10), one-time test run done (2026-11-24; recall@6 19/22 pass, citation correctness and mechanical claim check FAIL), human claim audit 26/26 PASS + post-hoc LLM rater 2 20/26; MCP server exposing `score_transaction` and `search_regulations` done (`fff11e9`..`820d1cf`, CI run 46011504123 green); design in `docs/rag_design.md`, results in `docs/rag_results.md` |
 | 8 | Dashboard and replay: hand-written SQL, time-to-detection, Power BI with a state risk map, replay on a simulated clock with delayed labels, alert queue with feedback, what-if page, fairness monitoring, red-teaming the fraud model (simulated fraudster shifts to daytime, splits amounts, picks low-risk categories; measure recall drop), champion/challenger in shadow mode during the replay, promotion by a pre-registered rule | All | ⬜ Not started |
 | 9 | Secure public deployment of the AI assistant (per-user keys, rate limits, monitoring, prompt-injection red-team set, security doc) + final showcase package (model card, datasheet, demo video, README, LinkedIn post); customer-facing decline message only if time allows | MLOps / LLMOps / security | ⬜ Not started |
 
@@ -186,9 +186,9 @@ Keys are never printed in output or logs. The Census API only accepts the key as
 
 ## 9. To-do
 
-Phase 7 (RAG and agent), in progress:
+Phase 7 (RAG and agent), complete (2026-11-27):
 
-- [ ] MCP server exposing `score_transaction` and `search_regulations` (planned, end of Phase 7)
+- [x] MCP server exposing `score_transaction` and `search_regulations` (done: `fff11e9`..`820d1cf`, CI run 46011504123 green)
 
 Phase 8 (dashboard and replay), planned:
 
@@ -348,7 +348,7 @@ Local dbt (writes `data/gold/fraud_dev.duckdb`, never `fraud.duckdb`), from `src
 | 2026-11-22 (evening) -> 11-23 (~00:43) | I approved the question set (one fix: T05 prohibition fact). Retrieval selection rule and glossary written and committed before any selection run; dense retrieval chosen (recall@6 7/8 on dev, tie to the simplest), τ disabled (dev does not separate). Dev evaluation with llama3.1: mechanical check 9/10, so C4 triggered; tie rule written before the qwen2.5 run. Commits `b529fb2` to `bb1093c` (00:27–00:43). |
 | 2026-11-23 (~10:41) | The `qwen2.5:7b-instruct` pull failed several times (network, DNS). Alert agent and deterministic baseline built and tested with fakes; `rag_eval --model` for the C4 comparison and the freeze script. Commits `6d9bac0`, `5eca498` (10:41). |
 | 2026-11-24 (evening) | Pre-registration frozen (both models fail C4 on dev; llama3.1 stays by the written rule, a known limitation) and pushed with the decisions before the test run (`09e866b`, `7a26462`, CI green). Agent on 10 fixed cases: deterministic baseline 10/10 (recommended mode), tool-calling agent 6/10 (llama3.1), qwen2.5 comparison 6/10. One-time test run at `ddd10a4`: recall@6 19/22 pass, citation validity 75/75 pass, citation correctness 16/21 FAIL, mechanical claim check 13/16 FAIL, correct refusal 7/8, false refusal 1/22. Results in `docs/rag_results.md` (`8e2d5b5`), local only. Commits `324e374` to `8e2d5b5` (23:24–23:50). |
-| 2026-11-25 -> 11-27 | Human claim audit (option B), labelled by me: 26/26 sentences supported, 0 contradicted, PASS; evidence file and audit script; protocol deviations recorded (first pass discarded, Persian translations by the chat assistant, single annotator) (`f1e8d24`, 14:12). Post-hoc LLM second rater, not blind and not pre-registered: 20/26, raw agreement 20/26, kappa not informative; the official verdict is unchanged (`37200d7`, 14:33). Plan update decided: red-teaming and champion/challenger (Phase 8), model card + datasheet (Phase 9 showcase), MCP server (end of Phase 7); decline message only if time allows; Persian layer and card-merchant network features not planned. New Phase 9 row; this status file brought up to date. Commits local, not pushed. |
+| 2026-11-25 -> 11-27 | Human claim audit (option B), labelled by me: 26/26 sentences supported, 0 contradicted, PASS; evidence file and audit script; protocol deviations recorded (first pass discarded, Persian translations by the chat assistant, single annotator) (`f1e8d24`, 14:12). Post-hoc LLM second rater, not blind and not pre-registered: 20/26, raw agreement 20/26, kappa not informative; the official verdict is unchanged (`37200d7`, 14:33). Plan update decided: red-teaming and champion/challenger (Phase 8), model card + datasheet (Phase 9 showcase), MCP server (end of Phase 7); decline message only if time allows; Persian layer and card-merchant network features not planned. New Phase 9 row; this status file brought up to date. Commits local, not pushed. MCP server (stdio, search_regulations + score_transaction, exact API equality on 19 real test rows), pushed, CI green. Phase 7 complete. |
 
 ---
 
