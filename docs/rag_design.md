@@ -549,3 +549,45 @@ tests/        test_rag_corpus.py test_rag_parse.py test_rag_chunk.py test_rag_em
 - The CFR edition is frozen at July 2025, so later amendments are not in the corpus.
 - The samples are small, so the intervals are wide.
 - The Llama licence is custom.
+
+## 14. MCP server (Phase 7, final item; design 2026-11-27)
+
+Numbered §14, not §8: §8 is the pre-registered thresholds section and is cited by
+number elsewhere, so it is not renumbered.
+
+**Goal:** a local MCP server so that any MCP client (for example Claude Desktop) can use
+two existing capabilities. **No new model logic:** the model, bundle, threshold, index,
+retrieval configuration and every test result stay exactly as they are.
+
+| Item | Decision |
+|---|---|
+| Transport | **stdio only**, launched by the client as a child process. No network listener. Public exposure is Phase 9. |
+| SDK | The official Python MCP SDK, `mcp==2.3.0` (pure-Python wheel), **low-level `Server`** API, so the input schemas, output schemas and error payloads are written by this project, not inferred. |
+| Tool `search_regulations(query, k ≤ 6)` | The frozen retrieval (`src/rag/config.py`: dense only, k = 6) over the pinned 344-chunk index. At startup the index manifest's SHA-256 (LF-normalised) must equal the frozen value in `data/rag/eval/preregistration.json`, and `load_index` checks the file hashes and the corpus hashes; any mismatch stops the server. The query embedder (nomic-embed-text in the local Ollama, `127.0.0.1:11434`, the same loopback call the RAG assistant and the agent make) is checked against the index's model and digest on the first search. **No LLM call.** Returns, per excerpt: rank, `chunk_id`, `doc_id`, document/section label (`source_label`), section, section title, PDF pages, printed pages, the full citation string (`citation()`), the dense cosine and the sanitised chunk text, plus `max_cosine`. All labels are rendered by code from chunk metadata. |
+| Tool `score_transaction(card_key, trans_ts, amt, category, merch_lat, merch_long)` | **The Phase 6 scorer in process**: `load_bundle` (hashes verified), `SnapshotStore` (read-only DuckDB), `score_transaction` from `src/api/scoring.py`, validation by the API's own `ScoreRequest` model (no `client_ref`). No HTTP call to the API and no Docker. Returns `model_version`, `raw_score`, `probability_raw`, `probability_calibrated`, `alert`, `threshold` and the top-3 reasons. |
+| Reasons to an LLM client | An MCP client is an LLM, so guardrail D5 (§10) applies: the **values** of `age_band` and `urban` are returned as `"hidden"`; feature name and contribution are unchanged. Everything else equals the API exactly. The server never echoes `card_key`, time, amount or coordinates. |
+| Errors | Returned as **tool errors** (`isError: true`) whose structured content is `{"code": ..., "detail": ...}`, never a stack trace. Codes: the API's `validation_error` (detail = `loc`/`msg`/`type` only, as in the API; pydantic's `input` is dropped), `unknown_card`, `date_outside_calendar`; plus `embedder_unavailable`, `index_mismatch` and `internal_error` (nothing else is said). An unknown tool name is a protocol error (`-32602`). |
+| Privacy (logging) | Mirrors the API rule: one JSON line per tool call on **stderr** (stdout is the protocol channel): `request_id`, tool, status, latency, error code; for scoring also `model_version`, `alert` and the calibrated probability rounded to 3 decimals; for search only `k` and the number of hits. **Never logged:** `card_key`, amount, time, coordinates, query text, excerpt text. Unexpected errors log only the exception type. The SDK's `mcp` loggers are raised to WARNING. A test checks all of this, in process and over real stdio. |
+| Concurrency | Both tools run in a worker thread with a capacity limiter of 1, so the event loop is never blocked and calls are serialised (a DuckDB cursor per call, as in the API). |
+| Tool annotations | `readOnlyHint: true`, `idempotentHint: true`, `openWorldHint: false`. Neither tool can write or send anything. |
+
+**Rejected alternatives:**
+
+| Alternative | Reason |
+|---|---|
+| HTTP/SSE (Streamable HTTP) transport now | A network listener needs authentication and origin checks; public exposure is Phase 9. |
+| Calling the API over HTTP | Needs the container running and adds a second process; in-process reuse is the same code with one less failure mode, and parity is tested directly. |
+| Exposing the LLM answer tool (`src/rag/answer.py`) | Its evaluation is frozen and one-time; the client is already an LLM, and a second LLM inside a tool would hide which model wrote which sentence. |
+| A third-party MCP framework beyond the official SDK (e.g. standalone FastMCP) | Another dependency for what the official SDK already does; fewer packages to pin and audit. |
+| The SDK's high-level `MCPServer` | Its argument validation runs before the tool and returns its own error text (with the rejected values); the API's error codes could not be reproduced. |
+
+**Requirements:** `requirements-mcp.txt` = `-r requirements-rag.txt` + the API serving pins the
+scorer imports (`lightgbm`, `scipy`, `pydantic`) + `mcp==2.3.0`. `requirements.txt` and
+`requirements-api.txt` are unchanged. `mcp` adds `mcp-types`, `PyJWT`, `python-multipart` and
+`sse-starlette`; no already-installed version changed (checked with `pip --dry-run --only-binary :all:`).
+
+**Tests** (`tests/test_mcp_server.py`): tool listing and schemas; input validation errors;
+the logging rule; an end-to-end test with the SDK's own stdio client. CI uses the synthetic
+snapshot and a tiny index built with `FakeEmbedder`. Locally, marker `corpus` (+ `ollama`):
+search returns valid chunk ids of the real index; marker `gold`: `score_transaction` equals the
+in-process API scorer exactly on real test-period rows (no labels used).
