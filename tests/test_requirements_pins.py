@@ -49,3 +49,15 @@ def test_every_lock_entry_is_pin_continuation_then_hash():
         assert re.fullmatch(r"[a-z0-9.\-]+==\S+ \\", lines[i]), lines[i]
         assert re.fullmatch(r"    --hash=sha256:[0-9a-f]{64}", lines[i + 1]), lines[i + 1]
     assert sum("--hash=" in line for line in lines) == len(entries)
+
+
+def test_mcp_pins_match_every_other_requirements_file():
+    mcp = pins("requirements-mcp.txt")
+    assert mcp == {"lightgbm": "4.7.0", "scipy": "1.18.1", "pydantic": "2.14.1", "mcp": "2.3.0"}
+    for other in ("requirements.txt", "requirements-dev.txt", "requirements-api.txt",
+                  "requirements-rag.txt", "requirements-dbt.txt"):
+        shared = set(mcp) & set(pins(other))
+        diff = {p: (mcp[p], pins(other)[p]) for p in shared if mcp[p] != pins(other)[p]}
+        assert not diff, f"requirements-mcp.txt and {other} disagree: {diff}"
+    lines = (PROJECT_ROOT / "requirements-mcp.txt").read_text(encoding="utf-8").splitlines()
+    assert "-r requirements-rag.txt" in lines

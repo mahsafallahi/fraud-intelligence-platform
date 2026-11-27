@@ -41,9 +41,10 @@ jobs:
             requirements-dev.txt
             requirements-api.txt
             requirements-rag.txt
+            requirements-mcp.txt
 
       - name: Install dependencies
-        run: python -m pip install -r requirements-dev.txt -r requirements-api.txt -r requirements-rag.txt
+        run: python -m pip install -r requirements-dev.txt -r requirements-api.txt -r requirements-rag.txt -r requirements-mcp.txt
 
       # corpus/ollama (Phase 7): need the downloaded documents or a local Ollama server
       - name: Unit tests (local-data and model tests deselected, warnings are errors)

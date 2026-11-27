@@ -1,0 +1,13 @@
+# Phase 7 MCP server (stdio, local): extra runtime dependencies.
+# Kept apart from requirements.txt (Airflow image) and requirements-api.txt (API image),
+# which are unchanged. The server reuses the RAG index (requirements-rag.txt) and the
+# Phase 6 scorer in process, so it needs the API serving pins that the scorer imports.
+# tests/test_requirements_pins.py checks the packages shared with the other files.
+-r requirements-rag.txt
+# Same versions as requirements-api.txt (model F's bundle and the parity tests)
+lightgbm==4.7.0
+scipy==1.18.1
+pydantic==2.14.1
+# Official Python MCP SDK; pure-Python wheel. Adds mcp-types, PyJWT, python-multipart and
+# sse-starlette; changed no already-installed version (pip --dry-run --only-binary :all:).
+mcp==2.3.0
