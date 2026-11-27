@@ -376,7 +376,29 @@ The audit followed the pre-registered sample and bar (§7, §8). The protocol de
 - **c) The labels were made from Persian translations.**
   - The chat assistant (an LLM) translated each answer sentence and each excerpt into Persian. It only translated and did not suggest labels.
   - **Limitation:** translation errors could affect labels. The evidence file ties every label to the English excerpt text, so it can be re-checked.
-- **d) There was one annotator and no second one,** so there is no inter-annotator agreement.
+- **d) There was one annotator and no second one,** so there is no inter-annotator agreement. *(Later, a post-hoc LLM second rater was added: §6h. It is not a second human annotator.)*
+
+### 6h. Post-hoc second rater (2026-11-27, after the human audit; not pre-registered)
+
+**What was added:**
+- A second rater labelled the same 26 sentences under the same rule (everything the sentence claims must be in its cited excerpt; partly backed = not supported).
+- Its labels and reasons are in `data/rag/eval/claim_labels_rater2.md`.
+- `scripts/rag_claim_audit.py` computes its supported share, the raw agreement, the disagreeing ids and Cohen's kappa.
+
+**Who rater 2 is, and its limits:**
+- **An LLM, and the same model as the translator:** the chat assistant that wrote the Persian translations for the human annotator.
+- **Not blind:** it had seen the human labels during the labelling session.
+- **Not pre-registered:** it was added after the result was known.
+- It is therefore **not an independent second annotator**, and its agreement number is weaker evidence than a blind human second rating would be.
+
+**Why it was added:** §6g d) left the audit with no inter-annotator agreement at all. A second reading shows how much the 26/26 depends on one person's judgement of paraphrase and scope.
+
+**Result** (details in `docs/rag_results.md`, "Second rater and agreement"):
+- Rater 2: 20/26 = 0.77 supported, 0 contradicted.
+- Raw agreement: 20/26 = 0.77. Disagreements: T02-2, T04-2, T07-2, T10-1, T15-2 and T22-1, all of them human `supported` against rater-2 `not supported`.
+- Cohen's kappa is 0.000. It is not informative, because the human used a single category.
+
+**The official verdict is unchanged:** the pre-registered human claim-support metric stays the human annotator's 26/26, PASS. Rater 2 is reported beside it as a sensitivity check, not as a replacement.
 
 ## 7. Question set
 

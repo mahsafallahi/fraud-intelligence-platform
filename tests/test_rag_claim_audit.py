@@ -35,3 +35,47 @@ def test_one_contradicted_fails_even_above_the_rate(tmp_path):
 def test_unlabelled_or_unknown_label_is_invalid(tmp_path):
     assert run(tmp_path, "")["invalid"] == {"T02-1": ""}
     assert run(tmp_path, "maybe")["passed"] is False
+
+
+# ---- second rater and agreement -------------------------------------------------
+
+def test_agreement_raw_disagreements_and_kappa():
+    r1 = {"a": "supported", "b": "supported", "c": "not supported", "d": "not supported"}
+    r2 = {"a": "supported", "b": "not supported", "c": "not supported", "d": "supported"}
+    a = audit_mod.agreement(r1, r2)
+    assert (a["agree"], a["n"], a["disagreements"]) == (2, 4, ["b", "d"])
+    assert a["p_e"] == 0.5 and a["kappa"] == 0.0
+
+
+def test_kappa_perfect_and_undefined():
+    two = {"a": "supported", "b": "not supported"}
+    assert audit_mod.agreement(two, dict(two))["kappa"] == 1.0
+    one = {"a": "supported", "b": "supported"}
+    assert audit_mod.agreement(one, dict(one))["kappa"] is None          # 1 - p_e == 0
+
+
+def test_single_category_rater_gives_uninformative_zero_kappa():
+    r1 = {f"x{i}": "supported" for i in range(26)}
+    r2 = {**r1, **{f"x{i}": "not supported" for i in range(6)}}
+    a = audit_mod.agreement(r1, r2)
+    assert (a["agree"], len(a["disagreements"])) == (20, 6)
+    assert abs(a["kappa"]) < 1e-12 and a["single_category"] == {"rater1": True, "rater2": False}
+
+
+def test_agreement_needs_the_same_ids():
+    import pytest
+    with pytest.raises(ValueError):
+        audit_mod.agreement({"a": "supported"}, {"b": "supported"})
+
+
+def test_rater2_reader_accepts_empty_reasons(tmp_path):
+    p = tmp_path / "r2.md"
+    p.write_text("| # | Rater-2 label | Rater-2 reason |\n|---|---|---|\n| T01-1 | supported | |\n"
+                 "| T01-2 | not supported | Not in the excerpt. |\n", encoding="utf-8")
+    assert audit_mod.read_rater2(p) == {"T01-1": "supported", "T01-2": "not supported"}
+
+
+def test_committed_rater2_file_matches_the_expected_agreement():
+    a = audit_mod.agreement(audit_mod.read_labels(), audit_mod.read_rater2())
+    assert (a["agree"], a["n"]) == (20, 26)
+    assert a["disagreements"] == ["T02-2", "T04-2", "T07-2", "T10-1", "T15-2", "T22-1"]

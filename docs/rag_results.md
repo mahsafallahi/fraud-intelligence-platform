@@ -55,7 +55,7 @@ bar: >= 0.90 supported and 0 contradicted -> PASS
   - The chat assistant (an LLM) wrote a Persian translation of each sentence and excerpt.
   - The assistant only translated; it did not suggest labels.
   - **This is a limitation: translation errors could affect labels.** The evidence file points to the English text the labels rest on, so each label can be re-checked against the original.
-- **d) No second annotator,** so there is no inter-annotator agreement. The result is one person's judgement.
+- **d) No second annotator,** so there is no inter-annotator agreement. The result is one person's judgement. *(A post-hoc, non-blind LLM second rater was added later; see "Second rater and agreement" below. It is not a second human annotator.)*
 
 **Compared with the mechanical claim check (13/16 = 0.812, FAIL):**
 - The two checks answer different questions and disagree in both directions.
@@ -67,6 +67,51 @@ bar: >= 0.90 supported and 0 contradicted -> PASS
 - **The mechanical check was too lenient on a coincidental number.** T26 is unanswerable (card-network chargeback windows). It was answered with "60 days", and the check passed it because "60" occurs in a cited excerpt in an unrelated context. That answer is wrong.
 - Number matching can neither confirm that a sentence is backed nor catch a number taken out of context. That is why the human audit was pre-registered as the claim-support measure for the test sample.
 - **No other test result is changed by this audit.** The mechanical check and citation correctness remain FAIL as reported above.
+
+### Second rater and agreement
+
+**The official, pre-registered metric is unchanged:** it stays the human annotator's labels, 26/26 supported, 0 contradicted, **PASS**. The second rater below does not change that verdict.
+
+**Who rater 2 is:**
+- Rater 2 is an **LLM**: the same chat assistant that translated the excerpts into Persian for the human annotator.
+- It was added **after** the human audit and was **not pre-registered**.
+- **Rater 2 was not blind:** it had seen the human labels during the labelling session.
+- It used the same rule: everything the sentence claims must be in its cited excerpt, and a sentence that is only partly backed is `not supported`.
+- Labels and reasons are in [`data/rag/eval/claim_labels_rater2.md`](../data/rag/eval/claim_labels_rater2.md).
+
+| Rater | Supported | Rate | Wilson 95% interval | Contradicted | Bar (>= 0.90 and 0 contradicted) |
+|---|---|---|---|---|---|
+| Human annotator (official) | 26/26 | 1.00 | 0.871 to 1.000 | 0 | PASS |
+| Rater 2 (LLM, post hoc, not blind) | 20/26 | 0.77 | 0.579 to 0.890 | 0 | would not meet the bar |
+
+**Agreement:** raw agreement is **20/26 = 0.77**. In all six disagreements, the human said `supported` and rater 2 said `not supported`:
+
+| Id | Rater-2 reason |
+|---|---|
+| T02-2 | The excerpt says "develop" policies indicating when to escalate; "review" is not in the excerpt. |
+| T04-2 | The excerpts state knowledge as a condition ("if the financial institution has knowledge"); the sentence asserts the bank has knowledge, which neither the excerpts nor the question say. |
+| T07-2 | The second half (TIN for U.S. persons, several other ID types for non-U.S. persons) is in neither excerpt; [6] is cut off at "(i) For a U.S.", and [3] only mentions the applied-for-TIN exception. |
+| T10-1 | The excerpt is about retaining documentation of a reporting company's consent under 1010.955; it does not mention section 314(b) notices or their validity. |
+| T15-2 | Excerpt [2] is 31 CFR 1010.955 on beneficial ownership information and defines foreign national security activity; it does not mention NSLs, counterintelligence or counterterrorism. |
+| T22-1 | The excerpt is about currency received in a trade or business (Form 8300), not carrying cash across the border. The first condition ("if the entire transaction occurs in the United States") inverts the excerpt's exception and is not stated by it. |
+
+**Cohen's kappa is 0.000 (p_o 0.769, p_e 0.769), and it is not informative here.** The human annotator used a single category (`supported`), so the chance agreement p_e equals rater 2's share of `supported`, and kappa is 0 whatever the observed agreement. Raw agreement and the list above are the meaningful numbers.
+
+Rater 2 also marked four sentences supported but borderline: T04-1, T15-3, T19-1 and T22-2. Their reasons are in the rater-2 file.
+
+**Interpretation:** the human audit passes, but a stricter second reading does not, so the claim-support result is sensitive to how strictly paraphrase and scope are judged. This agrees with the failures of the mechanical check and citation correctness: grounding is the weakest part of Phase 7.
+
+Output of `scripts/rag_claim_audit.py` for the second rater:
+
+```
+second rater (post hoc, LLM, not blind; does not change the official verdict above)
+rater 2: sentences 26  labels {'supported': 20, 'not supported': 6}
+rater 2: supported 20/26 = 0.77  contradicted 0  bar (>= 0.90 and 0 contradicted): FAIL
+raw agreement: 20/26 = 0.77
+disagreements: T02-2, T04-2, T07-2, T10-1, T15-2, T22-1
+Cohen's kappa: 0.000 (p_o 0.769, p_e 0.769)
+  caveat: rater 1 used a single category, so p_e equals the other rater's share of it and kappa is 0 (or undefined) whatever the agreement; kappa is not informative here, use raw agreement
+```
 
 ## Per question
 
